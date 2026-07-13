@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="leafA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9CCC4F"/>
+      <stop offset="1" stop-color="#66A233"/>
+    </linearGradient>
+    <linearGradient id="leafB" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8FC344"/>
+      <stop offset="1" stop-color="#5D9C34"/>
+    </linearGradient>
+  </defs>
+  <ellipse cx="100" cy="172" rx="55" ry="8" fill="#000" opacity="0.07"/>
+  <!-- left big leaf -->
+  <g>
+    <path d="M96 96 C60 108 28 92 24 62 C34 34 74 26 94 48 C104 62 104 84 96 96Z" fill="url(#leafA)"/>
+    <path d="M96 96 C66 88 44 70 36 50" fill="none" stroke="#4F8A2B" stroke-width="3.5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M82 88 C74 80 68 70 66 60 M68 84 C60 78 54 70 50 60 M88 74 C82 66 78 58 76 50" fill="none" stroke="#4F8A2B" stroke-width="2.5" stroke-linecap="round" opacity="0.45"/>
+  </g>
+  <!-- right big leaf -->
+  <g>
+    <path d="M104 96 C140 108 172 92 176 62 C166 34 126 26 106 48 C96 62 96 84 104 96Z" fill="url(#leafB)"/>
+    <path d="M104 96 C134 88 156 70 164 50" fill="none" stroke="#4F8A2B" stroke-width="3.5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M118 88 C126 80 132 70 134 60 M132 84 C140 78 146 70 150 60 M112 74 C118 66 122 58 124 50" fill="none" stroke="#4F8A2B" stroke-width="2.5" stroke-linecap="round" opacity="0.45"/>
+  </g>
+  <!-- stem joint -->
+  <circle cx="100" cy="100" r="6" fill="#6FA83C"/>
+  <!-- bottom-left small leaf -->
+  <g>
+    <path d="M96 106 C70 106 50 126 50 152 C68 166 96 156 102 132 C104 122 102 112 96 106Z" fill="url(#leafB)"/>
+    <path d="M97 108 C82 122 70 138 64 152" fill="none" stroke="#4F8A2B" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+    <path d="M88 124 C80 122 72 122 66 124 M92 136 C84 136 76 138 70 142" fill="none" stroke="#4F8A2B" stroke-width="2.2" stroke-linecap="round" opacity="0.45"/>
+  </g>
+  <!-- bottom-right smaller leaf -->
+  <g>
+    <path d="M106 108 C128 106 148 118 152 138 C138 150 114 146 106 128 C103 120 103 113 106 108Z" fill="url(#leafA)"/>
+    <path d="M108 110 C120 120 132 130 140 140" fill="none" stroke="#4F8A2B" stroke-width="2.6" stroke-linecap="round" opacity="0.7"/>
+    <path d="M120 118 C124 114 128 112 134 111 M126 128 C132 126 138 126 142 127" fill="none" stroke="#4F8A2B" stroke-width="2" stroke-linecap="round" opacity="0.45"/>
+  </g>
+</svg>

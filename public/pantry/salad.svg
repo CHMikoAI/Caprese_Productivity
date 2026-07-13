@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <radialGradient id="plate" cx="0.5" cy="0.46" r="0.72">
+      <stop offset="0" stop-color="#FBF8F2"/>
+      <stop offset="0.82" stop-color="#F2ECE1"/>
+      <stop offset="1" stop-color="#DDD3C2"/>
+    </radialGradient>
+    <radialGradient id="tom" cx="0.4" cy="0.35" r="0.9">
+      <stop offset="0" stop-color="#F0645C"/>
+      <stop offset="1" stop-color="#D42F3D"/>
+    </radialGradient>
+    <radialGradient id="moz" cx="0.42" cy="0.38" r="0.9">
+      <stop offset="0" stop-color="#FFFEF9"/>
+      <stop offset="1" stop-color="#F0E4C8"/>
+    </radialGradient>
+    <linearGradient id="bas" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8FC344"/>
+      <stop offset="1" stop-color="#5D9C34"/>
+    </linearGradient>
+  </defs>
+
+  <!-- top-down plate filling the whole frame -->
+  <circle cx="100" cy="100" r="97" fill="url(#plate)"/>
+  <circle cx="100" cy="100" r="80" fill="#FDFBF6"/>
+  <circle cx="100" cy="100" r="80" fill="none" stroke="#E2D8C6" stroke-width="1.5" opacity="0.8"/>
+
+  <!-- oil pools on the plate -->
+  <ellipse cx="72" cy="146" rx="13" ry="6" fill="#EBC93E" opacity="0.75"/>
+  <ellipse cx="142" cy="128" rx="10" ry="5" fill="#EBC93E" opacity="0.65"/>
+
+  <!-- ring of alternating tomato / mozzarella slices -->
+  <g>
+    <g transform="translate(100 47)">
+      <circle r="28" fill="url(#tom)" stroke="#C22733" stroke-width="1.5"/><circle r="20" fill="#E8564F"/>
+      <circle cx="-7" cy="-5" r="2.2" fill="#F3B23E"/><circle cx="8" cy="-3" r="2.2" fill="#F3B23E"/><circle cx="0" cy="9" r="2.2" fill="#F3B23E"/>
+    </g>
+    <g transform="translate(137 63)">
+      <circle r="28" fill="url(#moz)" stroke="#E8D8B4" stroke-width="1.5"/>
+      <circle r="21" fill="none" stroke="#EFE3C8" stroke-width="2.5" opacity="0.9"/>
+      <circle cx="-6" cy="-4" r="2" fill="#E4D3AE"/><circle cx="7" cy="7" r="1.8" fill="#E4D3AE"/>
+    </g>
+    <g transform="translate(153 100)">
+      <circle r="28" fill="url(#tom)" stroke="#C22733" stroke-width="1.5"/><circle r="20" fill="#E8564F"/>
+      <circle cx="-6" cy="-7" r="2.2" fill="#F3B23E"/><circle cx="7" cy="-2" r="2.2" fill="#F3B23E"/><circle cx="-1" cy="8" r="2.2" fill="#F3B23E"/>
+    </g>
+    <g transform="translate(137 137)">
+      <circle r="28" fill="url(#moz)" stroke="#E8D8B4" stroke-width="1.5"/>
+      <circle r="21" fill="none" stroke="#EFE3C8" stroke-width="2.5" opacity="0.9"/>
+      <circle cx="-7" cy="-3" r="2" fill="#E4D3AE"/><circle cx="6" cy="7" r="1.8" fill="#E4D3AE"/>
+    </g>
+    <g transform="translate(100 153)">
+      <circle r="28" fill="url(#tom)" stroke="#C22733" stroke-width="1.5"/><circle r="20" fill="#E8564F"/>
+      <circle cx="-7" cy="-4" r="2.2" fill="#F3B23E"/><circle cx="7" cy="-4" r="2.2" fill="#F3B23E"/><circle cx="0" cy="8" r="2.2" fill="#F3B23E"/>
+    </g>
+    <g transform="translate(63 137)">
+      <circle r="28" fill="url(#moz)" stroke="#E8D8B4" stroke-width="1.5"/>
+      <circle r="21" fill="none" stroke="#EFE3C8" stroke-width="2.5" opacity="0.9"/>
+      <circle cx="-6" cy="-5" r="2" fill="#E4D3AE"/><circle cx="7" cy="6" r="1.8" fill="#E4D3AE"/>
+    </g>
+    <g transform="translate(47 100)">
+      <circle r="28" fill="url(#tom)" stroke="#C22733" stroke-width="1.5"/><circle r="20" fill="#E8564F"/>
+      <circle cx="-6" cy="-6" r="2.2" fill="#F3B23E"/><circle cx="8" cy="-1" r="2.2" fill="#F3B23E"/><circle cx="-1" cy="8" r="2.2" fill="#F3B23E"/>
+    </g>
+    <g transform="translate(63 63)">
+      <circle r="28" fill="url(#moz)" stroke="#E8D8B4" stroke-width="1.5"/>
+      <circle r="21" fill="none" stroke="#EFE3C8" stroke-width="2.5" opacity="0.9"/>
+      <circle cx="-5" cy="-6" r="2" fill="#E4D3AE"/><circle cx="6" cy="6" r="1.8" fill="#E4D3AE"/>
+    </g>
+  </g>
+
+  <!-- basil crown in the middle -->
+  <g>
+    <path d="M100 100 C88 82 68 76 52 82 C64 88 76 96 84 106 Z" fill="url(#bas)"/>
+    <path d="M100 100 C112 82 132 76 148 82 C136 88 124 96 116 106 Z" fill="url(#bas)"/>
+    <path d="M100 102 C92 114 92 126 100 137 C108 126 108 114 100 102 Z" fill="url(#bas)"/>
+    <path d="M98 100 C86 98 74 102 66 112 C78 110 88 110 96 114 Z" fill="#6FA83C"/>
+    <path d="M102 100 C114 98 126 102 134 112 C122 110 112 110 104 114 Z" fill="#6FA83C"/>
+    <circle cx="100" cy="101" r="4" fill="#5D9C34"/>
+  </g>
+
+  <!-- oil drizzle -->
+  <ellipse cx="100" cy="82" rx="4" ry="2.6" fill="#F2D24B" opacity="0.9"/>
+  <ellipse cx="124" cy="106" rx="3.4" ry="2.2" fill="#F2D24B" opacity="0.9"/>
+  <ellipse cx="76" cy="108" rx="3.4" ry="2.2" fill="#F2D24B" opacity="0.9"/>
+</svg>

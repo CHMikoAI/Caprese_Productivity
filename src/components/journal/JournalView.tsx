@@ -1,17 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Feather,
-  Flame,
-  HeartHandshake,
-  HeartPulse,
-  Pencil,
-  Trash2,
-  type LucideIcon,
-} from "lucide-react";
+import { Flame, Pencil, Trash2 } from "lucide-react";
 import { deleteJournalEntry, saveJournalEntry } from "@/app/actions";
+import DateField from "@/components/DateField";
 import {
   addDays,
   formatDayLong,
@@ -22,14 +15,14 @@ import {
   weekRangeLabel,
   WEEKDAYS_SHORT,
 } from "@/lib/dates";
+import { PILLAR_META } from "@/lib/pillarIcons";
+import { STREAK_MILESTONE } from "@/lib/rewards";
+import { useShortcuts } from "@/lib/useShortcuts";
 import { PILLARS, type JournalEntry, type Pillar } from "@/lib/types";
+import RewardToast, { useRewardToast } from "@/components/RewardToast";
 import Toast, { useToast } from "@/components/Toast";
 
-const PILLAR_META: Record<Pillar, { label: string; icon: LucideIcon }> = {
-  freedom: { label: "Freedom", icon: Feather },
-  health: { label: "Health", icon: HeartPulse },
-  relationship: { label: "Relationship", icon: HeartHandshake },
-};
+const TEXTAREA_MAX_LINES = 3;
 
 export default function JournalView({
   initialEntries,
@@ -38,14 +31,20 @@ export default function JournalView({
 }) {
   const router = useRouter();
   const { message: toast, show: showError } = useToast();
+  const { reward, showReward } = useRewardToast();
 
   const [entries, setEntries] = useState(initialEntries);
   const [dateKey, setDateKey] = useState(() => toDateKey(new Date()));
   const [content, setContent] = useState("");
   const [pillar, setPillar] = useState<Pillar | null>(null);
   const [busy, setBusy] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => setEntries(initialEntries), [initialEntries]);
+
+  useShortcuts({
+    n: () => textareaRef.current?.focus(),
+  });
 
   const entryForDate = entries.find((e) => e.entry_date === dateKey);
 
@@ -55,6 +54,16 @@ export default function JournalView({
     setPillar(entryForDate?.pillar ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateKey]);
+
+  // Auto-grow the textarea up to TEXTAREA_MAX_LINES, then let it scroll.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight);
+    const maxHeight = lineHeight * TEXTAREA_MAX_LINES;
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+  }, [content]);
 
   const stats = useMemo(() => {
     const total: Record<Pillar, number> = {
@@ -120,12 +129,21 @@ export default function JournalView({
     if (!trimmed || !pillar || busy) return;
     setBusy(true);
     try {
-      const saved = await saveJournalEntry(dateKey, pillar, trimmed);
+      const { entry: saved, picksAwarded, streakBonus } =
+        await saveJournalEntry(dateKey, pillar, trimmed);
       setEntries((list) => [
         saved,
         ...list.filter((entry) => entry.entry_date !== saved.entry_date),
       ]);
       router.refresh();
+      if (picksAwarded > 0) {
+        showReward(
+          picksAwarded,
+          streakBonus > 0
+            ? `${STREAK_MILESTONE}-day streak bonus included!`
+            : undefined,
+        );
+      }
     } catch {
       showError("Could not save the entry.");
     }
@@ -146,7 +164,7 @@ export default function JournalView({
   const todayKey = toDateKey(new Date());
 
   return (
-    <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6">
       <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
         Journal
       </h1>
@@ -196,19 +214,27 @@ export default function JournalView({
           <h2 className="text-sm font-semibold text-neutral-200">
             {dateKey === todayKey ? "Today" : formatDayLong(fromDateKey(dateKey))}
           </h2>
-          <input
-            type="date"
-            value={dateKey}
-            max={todayKey}
-            onChange={(e) => e.target.value && setDateKey(e.target.value)}
-            className="rounded-lg border border-neutral-800 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-400 focus:border-accent focus:outline-none"
-          />
+          <div className="w-40">
+            <DateField
+              value={fromDateKey(dateKey)}
+              onChange={(d) => setDateKey(toDateKey(d))}
+              maxDate={new Date()}
+            />
+          </div>
         </div>
-        <input
+        <textarea
+          ref={textareaRef}
           value={content}
           onChange={(e) => setContent(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              (e.currentTarget.form as HTMLFormElement | null)?.requestSubmit();
+            }
+          }}
           placeholder="One sentence: what did you learn or improve?"
-          className="mt-3 w-full rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-accent focus:outline-none"
+          rows={1}
+          className="mt-3 w-full resize-none overflow-y-auto rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-2.5 text-sm leading-relaxed text-neutral-100 placeholder:text-neutral-600 focus:border-accent focus:outline-none"
         />
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {PILLARS.map((p) => {
@@ -255,42 +281,75 @@ export default function JournalView({
                 {group.range}
               </span>
             </h3>
-            <ul className="mt-2 flex flex-col">
+            <ul className="mt-2 flex flex-col gap-2 sm:gap-0">
               {group.entries.map((entry) => {
                 const date = fromDateKey(entry.entry_date);
                 const Icon = PILLAR_META[entry.pillar].icon;
+                const label = PILLAR_META[entry.pillar].label;
+                const openEdit = () => {
+                  setDateKey(entry.entry_date);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                };
                 return (
-                  <li
-                    key={entry.id}
-                    className="group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-neutral-900/70"
-                  >
-                    <span className="w-14 shrink-0 pt-0.5 text-xs text-neutral-500">
-                      {WEEKDAYS_SHORT[(date.getDay() + 6) % 7]} {date.getDate()}
-                    </span>
-                    <span title={PILLAR_META[entry.pillar].label}>
-                      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-neutral-500" />
-                    </span>
-                    <p className="min-w-0 flex-1 text-sm leading-relaxed text-neutral-200">
-                      {entry.content}
-                    </p>
-                    <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <button
-                        onClick={() => {
-                          setDateKey(entry.entry_date);
-                          window.scrollTo({ top: 0, behavior: "smooth" });
-                        }}
-                        className="rounded-md p-1 text-neutral-600 hover:bg-neutral-800 hover:text-neutral-200"
-                        aria-label="Edit entry"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => remove(entry)}
-                        className="rounded-md p-1 text-neutral-600 hover:bg-neutral-800 hover:text-accent"
-                        aria-label="Delete entry"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                  <li key={entry.id}>
+                    {/* desktop: compact inline row, actions on hover */}
+                    <div className="group hidden items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-neutral-900/70 sm:flex">
+                      <span className="w-14 shrink-0 pt-0.5 text-xs text-neutral-500">
+                        {WEEKDAYS_SHORT[(date.getDay() + 6) % 7]} {date.getDate()}
+                      </span>
+                      <span title={label}>
+                        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-neutral-500" />
+                      </span>
+                      <p className="min-w-0 flex-1 text-sm leading-relaxed text-neutral-200">
+                        {entry.content}
+                      </p>
+                      <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                          onClick={openEdit}
+                          className="rounded-md p-1 text-neutral-600 hover:bg-neutral-800 hover:text-neutral-200"
+                          aria-label="Edit entry"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => remove(entry)}
+                          className="rounded-md p-1 text-neutral-600 hover:bg-neutral-800 hover:text-accent"
+                          aria-label="Delete entry"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* mobile: a card — full-width sentence, meta + always-on
+                        actions above it (there is no hover on touch) */}
+                    <div className="flex flex-col gap-2 rounded-xl border border-neutral-800/60 bg-neutral-900/40 px-3.5 py-3 sm:hidden">
+                      <div className="flex items-center gap-2 text-xs text-neutral-500">
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          {WEEKDAYS_SHORT[(date.getDay() + 6) % 7]}{" "}
+                          {date.getDate()} · {label}
+                        </span>
+                        <div className="ml-auto flex gap-0.5">
+                          <button
+                            onClick={openEdit}
+                            className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
+                            aria-label="Edit entry"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => remove(entry)}
+                            className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-accent"
+                            aria-label="Delete entry"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-sm leading-relaxed text-neutral-100">
+                        {entry.content}
+                      </p>
                     </div>
                   </li>
                 );
@@ -300,6 +359,7 @@ export default function JournalView({
         ))}
       </div>
       <Toast message={toast} />
+      <RewardToast reward={reward} />
     </div>
   );
 }

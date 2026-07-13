@@ -6,6 +6,77 @@
     sans-serif;
   /* The single accent: tomato red. */
   --color-accent: #e63946;
+
+  /* Pantry animations */
+  --animate-card-deal: card-deal 0.5s cubic-bezier(0.2, 0.7, 0.3, 1.05) both;
+  --animate-pop-in: pop-in 0.45s cubic-bezier(0.2, 0.7, 0.3, 1.2) both;
+  --animate-toast-in: toast-in 0.3s ease-out both;
+  --animate-confetti: confetti 0.9s ease-out both;
+  --animate-shine: shine 2.4s linear infinite;
+  --animate-count-pulse: count-pulse 0.5s ease-out;
+
+  @keyframes card-deal {
+    from {
+      opacity: 0;
+      transform: translateY(24px) scale(0.92);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  @keyframes pop-in {
+    0% {
+      opacity: 0;
+      transform: scale(0.5);
+    }
+    65% {
+      transform: scale(1.08);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateY(16px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  @keyframes confetti {
+    from {
+      opacity: 1;
+      transform: translate(0, 0) rotate(0deg);
+    }
+    to {
+      opacity: 0;
+      transform: translate(var(--dx, 0px), var(--dy, -60px)) rotate(260deg);
+    }
+  }
+  @keyframes shine {
+    from {
+      transform: translateX(-130%) skewX(-12deg);
+    }
+    to {
+      transform: translateX(230%) skewX(-12deg);
+    }
+  }
+  @keyframes count-pulse {
+    0% {
+      transform: scale(1);
+    }
+    40% {
+      transform: scale(1.25);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
 }
 
 :root {
@@ -39,7 +110,8 @@ body {
   background: transparent;
 }
 
-/* Dark styling for native date inputs */
-input[type="date"]::-webkit-calendar-picker-indicator {
+/* Dark styling for native date/time inputs */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
 }
