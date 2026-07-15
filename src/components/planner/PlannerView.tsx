@@ -37,7 +37,7 @@ import RewardToast, { useRewardToast } from "@/components/RewardToast";
 import Toast, { useToast } from "@/components/Toast";
 import { formatDMY, formatTime } from "@/lib/dates";
 import { ENTRY_TYPE_ICON } from "@/lib/entryIcons";
-import { phaseOf, STATUS_LABEL } from "@/lib/entryStatus";
+import { isResolved, phaseOf, STATUS_LABEL } from "@/lib/entryStatus";
 import { useShortcuts } from "@/lib/useShortcuts";
 import { type Category, type Entry, type EntryStatus } from "@/lib/types";
 
@@ -45,13 +45,29 @@ const inputClass =
   "rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-accent focus:outline-none";
 
 type ModalState = { mode: "create" } | { mode: "edit"; entry: Entry };
-type TypeFilter = "all" | "task" | "goal";
+type TypeFilter = "all" | "task" | "todo" | "goal";
 
 const TYPE_FILTERS: { key: TypeFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "task", label: "Tasks" },
+  { key: "todo", label: "To do" },
   { key: "goal", label: "Goals" },
 ];
+
+/** A todo's deadline date, recovered from its next-midnight end_at. */
+function todoDeadline(entry: Entry): Date | null {
+  return entry.end_at ? new Date(new Date(entry.end_at).getTime() - 1) : null;
+}
+
+/** " – 16.07.2026" for multi-day all-day entries, "" for single-day ones. */
+function allDayRangeSuffix(entry: Entry): string {
+  if (!entry.start_at || !entry.end_at) return "";
+  const start = new Date(entry.start_at);
+  const endInclusive = new Date(new Date(entry.end_at).getTime() - 1);
+  const spansDays =
+    endInclusive.getTime() - start.getTime() > 24 * 60 * 60 * 1000;
+  return spansDays ? ` – ${formatDMY(endInclusive)}` : "";
+}
 
 export default function PlannerView({
   initialEntries,
@@ -96,7 +112,17 @@ export default function PlannerView({
 
   useShortcuts({
     n: () => setModal({ mode: "create" }),
-    q: () => quickAddRef.current?.focus(),
+    q: () => {
+      // Quick add lives in the To do section — make sure it's expanded, then
+      // focus its input on the next frame (it may have just mounted).
+      setCollapsed((prev) => {
+        if (!prev.has("todo")) return prev;
+        const next = new Set(prev);
+        next.delete("todo");
+        return next;
+      });
+      requestAnimationFrame(() => quickAddRef.current?.focus());
+    },
     "/": () => {
       setSearchOpen(true);
       // Focus also when the field is already expanded (autoFocus only fires
@@ -131,6 +157,7 @@ export default function PlannerView({
   // review:   dated task/goal whose time has passed — decide done/plan/cancel
   // upcoming: dated task/goal in the future (+ future events when toggled on)
   // toPlan:   task/goal without a date — drag them onto the calendar or plan here
+  // todos:    reminders (never on the calendar), sorted by deadline
   // archive:  resolved (done/cancelled/achieved/missed)
   const groups = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -141,9 +168,16 @@ export default function PlannerView({
     const review: Entry[] = [];
     const upcoming: Entry[] = [];
     const toPlan: Entry[] = [];
+    const todos: Entry[] = [];
     const archive: Entry[] = [];
     for (const e of entries) {
       if (!matches(e)) continue;
+      if (e.type === "todo") {
+        if (typeFilter !== "all" && typeFilter !== "todo") continue;
+        if (isResolved(e.status)) archive.push(e);
+        else todos.push(e);
+        continue;
+      }
       if (e.type === "event") {
         if (
           showEvents &&
@@ -166,8 +200,15 @@ export default function PlannerView({
     review.sort(byStart);
     upcoming.sort(byStart);
     toPlan.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+    // Todos: soonest deadline first, undated last, then newest.
+    todos.sort((a, b) => {
+      const ka = a.end_at ?? "￿";
+      const kb = b.end_at ?? "￿";
+      if (ka !== kb) return ka < kb ? -1 : 1;
+      return a.created_at < b.created_at ? 1 : -1;
+    });
     archive.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-    return { review, upcoming, toPlan, archive };
+    return { review, upcoming, toPlan, todos, archive };
   }, [entries, now, typeFilter, projectFilter, showEvents, search]);
 
   // ----- mutations -----
@@ -196,6 +237,7 @@ export default function PlannerView({
     patchLocal(entry.id, {
       start_at: start.toISOString(),
       end_at: end.toISOString(),
+      all_day: false,
       status: "active",
     });
     setPlanEntry(null);
@@ -210,9 +252,19 @@ export default function PlannerView({
   /** Plan dialog result: no date — park the entry under "To plan". */
   function unschedule(entry: Entry) {
     const prev = entries;
-    patchLocal(entry.id, { start_at: null, end_at: null, status: "active" });
+    patchLocal(entry.id, {
+      start_at: null,
+      end_at: null,
+      all_day: false,
+      status: "active",
+    });
     setPlanEntry(null);
-    updateEntry(entry.id, { start_at: null, end_at: null, status: "active" })
+    updateEntry(entry.id, {
+      start_at: null,
+      end_at: null,
+      all_day: false,
+      status: "active",
+    })
       .then(() => router.refresh())
       .catch(() => {
         setEntries(prev);
@@ -231,6 +283,8 @@ export default function PlannerView({
       });
   }
 
+  // Quick add creates a To do (a short reminder with no deadline). Anything
+  // that needs a date/time is created via the full "New" dialog instead.
   async function quickAdd(e: React.FormEvent) {
     e.preventDefault();
     const title = newTitle.trim();
@@ -238,18 +292,19 @@ export default function PlannerView({
     setBusy(true);
     try {
       const created = await createEntry({
-        type: "task",
+        type: "todo",
         title,
         categoryId: newCategoryId || null,
         startAt: null,
         endAt: null,
+        allDay: true,
         description: null,
       });
       setEntries((list) => [created, ...list]);
       setNewTitle("");
       router.refresh();
     } catch {
-      showError("Could not add the task.");
+      showError("Could not add the to-do.");
     }
     setBusy(false);
   }
@@ -267,6 +322,7 @@ export default function PlannerView({
         category_id: result.categoryId,
         start_at: result.startAt,
         end_at: result.endAt,
+        all_day: result.allDay,
         description: result.description,
         status: "active",
         created_at: new Date().toISOString(),
@@ -278,6 +334,7 @@ export default function PlannerView({
         categoryId: result.categoryId,
         startAt: result.startAt,
         endAt: result.endAt,
+        allDay: result.allDay,
         description: result.description,
       })
         .then((created) => {
@@ -297,6 +354,7 @@ export default function PlannerView({
         category_id: result.categoryId,
         start_at: result.startAt,
         end_at: result.endAt,
+        all_day: result.allDay,
         description: result.description,
       });
       updateEntry(id, {
@@ -305,6 +363,7 @@ export default function PlannerView({
         category_id: result.categoryId,
         start_at: result.startAt,
         end_at: result.endAt,
+        all_day: result.allDay,
         description: result.description,
       })
         .then(() => router.refresh())
@@ -358,16 +417,28 @@ export default function PlannerView({
           </p>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-neutral-500">
             {project && <span>{project.name}</span>}
-            {entry.start_at && (
-              <span
-                className={`flex items-center gap-1 ${overdue ? "text-accent/80" : ""}`}
-              >
-                <CalendarClock className="h-3 w-3" />
-                {overdue ? "was due " : ""}
-                {formatDMY(new Date(entry.start_at))} ·{" "}
-                {formatTime(new Date(entry.start_at))}
-              </span>
-            )}
+            {entry.type === "todo"
+              ? todoDeadline(entry) && (
+                  <span
+                    className={`flex items-center gap-1 ${overdue ? "text-accent/80" : ""}`}
+                  >
+                    <CalendarClock className="h-3 w-3" />
+                    {overdue ? "was due " : "due "}
+                    {formatDMY(todoDeadline(entry)!)}
+                  </span>
+                )
+              : entry.start_at && (
+                  <span
+                    className={`flex items-center gap-1 ${overdue ? "text-accent/80" : ""}`}
+                  >
+                    <CalendarClock className="h-3 w-3" />
+                    {overdue ? "was due " : ""}
+                    {formatDMY(new Date(entry.start_at))}
+                    {entry.all_day
+                      ? allDayRangeSuffix(entry)
+                      : ` · ${formatTime(new Date(entry.start_at))}`}
+                  </span>
+                )}
           </div>
         </button>
         <div className="flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto">
@@ -377,22 +448,40 @@ export default function PlannerView({
     );
   }
 
-  /** Done / Plan / Cancel (tasks) — Achieved / Plan / Not achieved (goals). */
+  /** Done / Plan / Cancel (tasks) — Achieved / Plan / Not achieved (goals).
+   * Todos resolve like tasks but never get a Plan button (no calendar slot). */
   function decisionActions(entry: Entry, planPrimary = false) {
-    const isTask = entry.type === "task";
+    const isGoal = entry.type === "goal";
     const doneBtn = (
       <button
-        onClick={() => resolve(entry, isTask ? "done" : "achieved")}
+        onClick={() => resolve(entry, isGoal ? "achieved" : "done")}
         className={planPrimary ? ghostBtn : primaryBtn}
       >
-        {isTask ? (
-          <CheckCircle2 className="h-3.5 w-3.5" />
-        ) : (
+        {isGoal ? (
           <Trophy className="h-3.5 w-3.5" />
+        ) : (
+          <CheckCircle2 className="h-3.5 w-3.5" />
         )}
-        {isTask ? "Done" : "Achieved"}
+        {isGoal ? "Achieved" : "Done"}
       </button>
     );
+    const cancelBtn = (
+      <button
+        onClick={() => resolve(entry, isGoal ? "missed" : "cancelled")}
+        className={ghostBtn}
+      >
+        {isGoal ? <X className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
+        {isGoal ? "Not achieved" : "Cancel"}
+      </button>
+    );
+    if (entry.type === "todo") {
+      return (
+        <>
+          {doneBtn}
+          {cancelBtn}
+        </>
+      );
+    }
     const planBtn = (
       <button
         onClick={() => setPlanEntry(entry)}
@@ -400,15 +489,6 @@ export default function PlannerView({
       >
         <CalendarClock className="h-3.5 w-3.5" />
         Plan
-      </button>
-    );
-    const cancelBtn = (
-      <button
-        onClick={() => resolve(entry, isTask ? "cancelled" : "missed")}
-        className={ghostBtn}
-      >
-        {isTask ? <Ban className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
-        {isTask ? "Cancel" : "Not achieved"}
       </button>
     );
     return planPrimary ? (
@@ -438,8 +518,144 @@ export default function PlannerView({
     );
   }
 
+  // ----- sections (composed into the two-column board below) -----
+
+  const reviewSection = (
+    <Section
+      title="To review"
+      count={groups.review.length}
+      hint="Time's up — mark it done, plan it again, or cancel it."
+      collapsed={collapsed.has("review")}
+      onToggle={() => toggleSection("review")}
+    >
+      {groups.review.length === 0 ? (
+        <EmptyHint text="Nothing to review — all caught up." />
+      ) : (
+        groups.review.map((entry) => (
+          <Row
+            key={entry.id}
+            entry={entry}
+            overdue
+            actions={decisionActions(entry)}
+          />
+        ))
+      )}
+    </Section>
+  );
+
+  const upcomingSection = (
+    <Section
+      title="Upcoming"
+      count={groups.upcoming.length}
+      collapsed={collapsed.has("upcoming")}
+      onToggle={() => toggleSection("upcoming")}
+    >
+      {groups.upcoming.length === 0 ? (
+        <EmptyHint text="Nothing scheduled yet." />
+      ) : (
+        groups.upcoming.map((entry) => (
+          <Row
+            key={entry.id}
+            entry={entry}
+            actions={
+              entry.type === "event"
+                ? eventActions(entry)
+                : decisionActions(entry)
+            }
+          />
+        ))
+      )}
+    </Section>
+  );
+
+  const toPlanSection = (
+    <Section
+      title="To plan"
+      count={groups.toPlan.length}
+      hint="No date yet. Plan them here or drag them onto the calendar."
+      collapsed={collapsed.has("toPlan")}
+      onToggle={() => toggleSection("toPlan")}
+    >
+      {groups.toPlan.length === 0 ? (
+        <EmptyHint text="No unplanned items." />
+      ) : (
+        groups.toPlan.map((entry) => (
+          <Row
+            key={entry.id}
+            entry={entry}
+            actions={decisionActions(entry, true)}
+          />
+        ))
+      )}
+    </Section>
+  );
+
+  // Quick add lives with the To do list — it only creates to-dos. Hidden on
+  // phones (add via "New"), matching the rest of the planner's mobile layout.
+  const todoQuickAdd = (
+    <form onSubmit={quickAdd} className="mt-2 hidden gap-2 sm:flex">
+      <input
+        ref={quickAddRef}
+        value={newTitle}
+        onChange={(e) => setNewTitle(e.target.value)}
+        placeholder="Quick add a to-do…"
+        title="Quick add a to-do (Q)"
+        className={`${inputClass} min-w-0 flex-1`}
+      />
+      <select
+        value={newCategoryId}
+        onChange={(e) => setNewCategoryId(e.target.value)}
+        className={`${inputClass} w-36 shrink-0`}
+        aria-label="Project"
+      >
+        <option value="">No project</option>
+        {categories.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.name}
+          </option>
+        ))}
+      </select>
+      <button
+        type="submit"
+        disabled={busy || !newTitle.trim()}
+        className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-800 disabled:opacity-40"
+      >
+        <Plus className="h-4 w-4" />
+        Add
+      </button>
+    </form>
+  );
+
+  const todoSection = (
+    <Section
+      title="To do"
+      count={groups.todos.length}
+      hint="Quick reminders — every 3 you finish earns a pick."
+      collapsed={collapsed.has("todo")}
+      onToggle={() => toggleSection("todo")}
+      beforeList={todoQuickAdd}
+    >
+      {groups.todos.length === 0 ? (
+        <EmptyHint text="No reminders yet — quick add one above." />
+      ) : (
+        groups.todos.map((entry) => {
+          const dl = todoDeadline(entry);
+          const overdue = dl != null && dl.getTime() <= now.getTime();
+          return (
+            <Row
+              key={entry.id}
+              entry={entry}
+              overdue={overdue}
+              actions={decisionActions(entry)}
+            />
+          );
+        })
+      )}
+    </Section>
+  );
+
   return (
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6">
+    <div className="w-full flex-1 px-4 py-8 sm:px-6">
       {/* header */}
       <div className="flex items-center gap-2">
         <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
@@ -585,105 +801,24 @@ export default function PlannerView({
         </div>
       </div>
 
-      {/* quick add (tasks land under "To plan"). Hidden on phones — the "New"
-          button opens the full dialog there, which keeps the list uncluttered. */}
-      <form onSubmit={quickAdd} className="mt-5 hidden gap-2 sm:flex sm:flex-row">
-        <input
-          ref={quickAddRef}
-          value={newTitle}
-          onChange={(e) => setNewTitle(e.target.value)}
-          placeholder="Quick add a task — plan it later…"
-          title="Quick add (Q)"
-          className={`${inputClass} flex-1`}
-        />
-        <select
-          value={newCategoryId}
-          onChange={(e) => setNewCategoryId(e.target.value)}
-          className={`${inputClass} sm:w-44`}
-        >
-          <option value="">No project</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <button
-          type="submit"
-          disabled={busy || !newTitle.trim()}
-          className="flex items-center justify-center gap-1.5 rounded-xl border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-800 disabled:opacity-40"
-        >
-          <Plus className="h-4 w-4" />
-          Add
-        </button>
-      </form>
-
-      {/* to review: time has passed, decide what happened */}
-      <Section
-        title="To review"
-        count={groups.review.length}
-        hint="Time's up — mark it done, plan it again, or cancel it."
-        collapsed={collapsed.has("review")}
-        onToggle={() => toggleSection("review")}
-      >
-        {groups.review.length === 0 ? (
-          <EmptyHint text="Nothing to review — all caught up." />
-        ) : (
-          groups.review.map((entry) => (
-            <Row
-              key={entry.id}
-              entry={entry}
-              overdue
-              actions={decisionActions(entry)}
-            />
-          ))
-        )}
-      </Section>
-
-      {/* upcoming */}
-      <Section
-        title="Upcoming"
-        count={groups.upcoming.length}
-        collapsed={collapsed.has("upcoming")}
-        onToggle={() => toggleSection("upcoming")}
-      >
-        {groups.upcoming.length === 0 ? (
-          <EmptyHint text="Nothing scheduled yet." />
-        ) : (
-          groups.upcoming.map((entry) => (
-            <Row
-              key={entry.id}
-              entry={entry}
-              actions={
-                entry.type === "event"
-                  ? eventActions(entry)
-                  : decisionActions(entry)
-              }
-            />
-          ))
-        )}
-      </Section>
-
-      {/* to plan: no date yet — also draggable from the calendar sidebar */}
-      <Section
-        title="To plan"
-        count={groups.toPlan.length}
-        hint="No date yet. Plan them here or drag them onto the calendar."
-        collapsed={collapsed.has("toPlan")}
-        onToggle={() => toggleSection("toPlan")}
-      >
-        {groups.toPlan.length === 0 ? (
-          <EmptyHint text="No unplanned items." />
-        ) : (
-          groups.toPlan.map((entry) => (
-            <Row
-              key={entry.id}
-              entry={entry}
-              actions={decisionActions(entry, true)}
-            />
-          ))
-        )}
-      </Section>
+      {/* Two-column board on wide screens: the left column holds everything
+          time-driven (review decisions, what's coming up), the right column
+          the backlog (unplanned items, quick reminders). Stacks below xl.
+          Quick add lives inside the To do section (see todoQuickAdd). */}
+      {typeFilter === "todo" ? (
+        todoSection
+      ) : (
+        <div className="grid items-start gap-x-10 xl:grid-cols-2">
+          <div>
+            {reviewSection}
+            {upcomingSection}
+          </div>
+          <div>
+            {toPlanSection}
+            {typeFilter === "all" && todoSection}
+          </div>
+        </div>
+      )}
 
       {/* archive */}
       {groups.archive.length > 0 && (
@@ -741,7 +876,11 @@ export default function PlannerView({
             modal.mode === "edit"
               ? editInitial(modal.entry)
               : createInitial(
-                  typeFilter === "goal" ? "goal" : "task",
+                  typeFilter === "goal"
+                    ? "goal"
+                    : typeFilter === "todo"
+                      ? "todo"
+                      : "task",
                   defaultStart(),
                   typeFilter === "goal",
                 )
@@ -814,6 +953,7 @@ function Section({
   hint,
   collapsed,
   onToggle,
+  beforeList,
   children,
 }: {
   title: string;
@@ -821,6 +961,8 @@ function Section({
   hint?: string;
   collapsed: boolean;
   onToggle: () => void;
+  /** Rendered between the header and the list (e.g. an inline add form). */
+  beforeList?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -842,7 +984,12 @@ function Section({
           </span>
         )}
       </button>
-      {!collapsed && <ul className="mt-2 flex flex-col gap-2">{children}</ul>}
+      {!collapsed && (
+        <>
+          {beforeList}
+          <ul className="mt-2 flex flex-col gap-2">{children}</ul>
+        </>
+      )}
     </section>
   );
 }

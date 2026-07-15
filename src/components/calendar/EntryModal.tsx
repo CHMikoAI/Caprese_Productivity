@@ -4,8 +4,9 @@ import { useState } from "react";
 import { Maximize2, Minimize2, Trash2 } from "lucide-react";
 import DateField from "@/components/DateField";
 import RichTextEditor from "@/components/RichTextEditor";
-import { addMinutes, startOfDay, withMinutes } from "@/lib/dates";
+import { addDays, addMinutes, startOfDay, withMinutes } from "@/lib/dates";
 import { ENTRY_TYPE_ICON } from "@/lib/entryIcons";
+import { TODO_BATCH } from "@/lib/rewards";
 import { useEscape } from "@/lib/useShortcuts";
 import {
   ENTRY_TYPES,
@@ -20,6 +21,7 @@ export type EntryFormResult = {
   categoryId: string | null;
   startAt: string | null;
   endAt: string | null;
+  allDay: boolean;
   description: string | null;
 };
 
@@ -30,6 +32,8 @@ export type EntryModalInitial = {
   scheduled: boolean;
   start: Date;
   durationMin: number;
+  allDay: boolean;
+  deadline: Date | null; // todo only
   description: string;
 };
 
@@ -114,6 +118,15 @@ export default function EntryModal({
     return e.getHours() * 60 + e.getMinutes();
   });
 
+  const [allDay, setAllDay] = useState(initial.allDay);
+  // Inclusive end date for all-day entries (same day = single-day entry).
+  // Derived from duration so editing a stored multi-day span shows the last
+  // covered day, not the exclusive next midnight.
+  const [allDayEnd, setAllDayEnd] = useState(() =>
+    startOfDay(addMinutes(initial.start, Math.max(initial.durationMin - 1, 0))),
+  );
+  const [deadline, setDeadline] = useState<Date | null>(initial.deadline);
+
   const [error, setError] = useState<string | null>(null);
   const [notesExpanded, setNotesExpanded] = useState(false);
 
@@ -123,6 +136,10 @@ export default function EntryModal({
     setType(t);
     // Events must be dated — give them one the moment they're selected.
     if (t === "event" && !startDate) setStartDate(startOfDay(initial.start));
+    // Goals are date-only by default.
+    if (t === "goal") setAllDay(true);
+    // Todos never sit on the calendar — only an optional deadline.
+    if (t === "todo") setStartDate(null);
   }
 
   function submit(e: React.FormEvent) {
@@ -135,7 +152,20 @@ export default function EntryModal({
 
     let startAt: string | null = null;
     let endAt: string | null = null;
-    if (startDate) {
+    let allDayOut = false;
+
+    if (type === "todo") {
+      // Off-calendar reminder: no start, an optional date-only deadline.
+      allDayOut = true;
+      if (deadline) endAt = addDays(startOfDay(deadline), 1).toISOString();
+    } else if (startDate && allDay) {
+      // Date-only entry: covers start day through the (inclusive) end day.
+      const s = startOfDay(startDate);
+      const e = startOfDay(allDayEnd.getTime() < s.getTime() ? s : allDayEnd);
+      startAt = s.toISOString();
+      endAt = addDays(e, 1).toISOString();
+      allDayOut = true;
+    } else if (startDate) {
       const start = withMinutes(startDate, startMin);
       const end =
         endMode === "duration"
@@ -158,6 +188,7 @@ export default function EntryModal({
       categoryId: categoryId || null,
       startAt,
       endAt,
+      allDay: allDayOut,
       description: description.trim() ? description : null,
     });
   }
@@ -169,7 +200,7 @@ export default function EntryModal({
           notesExpanded ? "flex h-[85vh] flex-col" : ""
         }`}
       >
-        <div className="mb-5 flex items-center justify-between">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold text-neutral-100">
             {mode === "create" ? "New" : `Edit ${ENTRY_TYPE_LABEL[type].toLowerCase()}`}
           </h2>
@@ -184,8 +215,8 @@ export default function EntryModal({
                   onClick={() => changeType(t)}
                   className={
                     type === t
-                      ? "flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 font-medium text-white"
-                      : "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-neutral-400 transition-colors hover:text-neutral-200"
+                      ? "flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 font-medium text-white"
+                      : "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-neutral-400 transition-colors hover:text-neutral-200"
                   }
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -229,25 +260,67 @@ export default function EntryModal({
           </label>
           )}
 
-          {!notesExpanded && (
+          {!notesExpanded && type === "todo" && (
+            <div className="flex flex-col gap-4 rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
+              <label className={labelClass}>
+                Deadline
+                <DateField
+                  value={deadline}
+                  onChange={setDeadline}
+                  onClear={() => setDeadline(null)}
+                />
+                <span className="text-[11px] font-normal text-neutral-600">
+                  Optional — a quick reminder, never on the calendar. Finish{" "}
+                  {TODO_BATCH} to earn a pick.
+                </span>
+              </label>
+            </div>
+          )}
+
+          {!notesExpanded && type !== "todo" && (
             <div className="flex flex-col gap-4 rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
               {/* start — optional for tasks/goals (leave empty), required for events */}
               {startDate ? (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px]">
+                <div
+                  className={
+                    allDay
+                      ? "grid grid-cols-1 gap-3 sm:grid-cols-2"
+                      : "grid grid-cols-1 gap-3 sm:grid-cols-[1fr_120px]"
+                  }
+                >
                   <label className={labelClass}>
-                    Start date
+                    {allDay ? "Date" : "Start date"}
                     <DateField
                       value={startDate}
-                      onChange={setStartDate}
+                      onChange={(d) => {
+                        setStartDate(d);
+                        // keep the all-day range valid when start moves past it
+                        if (allDayEnd.getTime() < startOfDay(d).getTime()) {
+                          setAllDayEnd(startOfDay(d));
+                        }
+                      }}
                       onClear={
                         type === "event" ? undefined : () => setStartDate(null)
                       }
                     />
                   </label>
-                  <label className={labelClass}>
-                    Time
-                    <TimeSelect value={startMin} onChange={setStartMin} />
-                  </label>
+                  {allDay ? (
+                    <label className={labelClass}>
+                      End date
+                      <DateField
+                        value={allDayEnd}
+                        onChange={(d) => setAllDayEnd(startOfDay(d))}
+                      />
+                      <span className="text-[11px] font-normal text-neutral-600">
+                        Same day = a single-day entry.
+                      </span>
+                    </label>
+                  ) : (
+                    <label className={labelClass}>
+                      Time
+                      <TimeSelect value={startMin} onChange={setStartMin} />
+                    </label>
+                  )}
                 </div>
               ) : (
                 <label className={labelClass}>
@@ -261,6 +334,18 @@ export default function EntryModal({
               )}
 
               {startDate && (
+                <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-neutral-400">
+                  <input
+                    type="checkbox"
+                    checked={allDay}
+                    onChange={(e) => setAllDay(e.target.checked)}
+                    className="h-4 w-4 rounded border-neutral-600 bg-neutral-950 accent-accent"
+                  />
+                  All day
+                </label>
+              )}
+
+              {startDate && !allDay && (
                 <>
                   <div className="flex items-center gap-2 text-xs">
                     <span className="font-medium text-neutral-500">Ends by</span>

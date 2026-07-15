@@ -31,7 +31,7 @@ const SECTIONS: { title: string; items: [string, string][] }[] = [
     title: "Planner",
     items: [
       ["N", "New entry"],
-      ["Q", "Quick add a task"],
+      ["Q", "Quick add a to-do"],
       ["/", "Search"],
     ],
   },

@@ -161,12 +161,14 @@ export default function MonthView({
                             : "1px solid rgba(0,0,0,0.2)",
                       }}
                     >
-                      <span
-                        className="hidden shrink-0 sm:inline"
-                        style={{ color: pal.sub }}
-                      >
-                        {formatTime(new Date(entry.start_at!))}
-                      </span>
+                      {!entry.all_day && (
+                        <span
+                          className="hidden shrink-0 sm:inline"
+                          style={{ color: pal.sub }}
+                        >
+                          {formatTime(new Date(entry.start_at!))}
+                        </span>
+                      )}
                       <span className={`truncate ${struck ? "line-through" : ""}`}>
                         {entry.title}
                       </span>

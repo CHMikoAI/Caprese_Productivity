@@ -9,7 +9,7 @@ create table if not exists categories (
   created_at timestamptz not null default now()
 );
 
--- One unified table for the three creatable kinds: task, event, goal.
+-- One unified table for the four creatable kinds: task, event, goal, todo.
 -- They share all fields; `type` is the only discriminator.
 --  * event         -> always timed, shown on the calendar; never tracked
 --                     (just past or future).
@@ -18,13 +18,18 @@ create table if not exists categories (
 --                      upcoming (dated, future) -> open (time passed / undated)
 --                      -> terminal `status`: done/cancelled (task),
 --                      achieved/missed (goal).
+--  * todo           -> short reminder, never on the calendar (start_at stays
+--                      null); an optional deadline lives in end_at. Resolves
+--                      done/cancelled like a task; every 3 done pays 1 pick.
+-- all_day marks date-only entries (no time); goals default to it.
 create table if not exists entries (
   id uuid primary key default gen_random_uuid(),
-  type text not null check (type in ('task', 'event', 'goal')),
+  type text not null check (type in ('task', 'event', 'goal', 'todo')),
   title text not null,
   category_id uuid references categories(id) on delete set null,
   start_at timestamptz,
   end_at timestamptz,
+  all_day boolean not null default false,
   description text,           -- rich text stored as sanitized HTML
   status text not null default 'active'
     check (status in ('active', 'done', 'cancelled', 'achieved', 'missed')),
@@ -60,7 +65,7 @@ create table if not exists salads (
 -- idempotent: re-completing a task or re-saving a journal day never pays twice.
 create table if not exists reward_grants (
   id uuid primary key default gen_random_uuid(),
-  source text not null check (source in ('journal', 'task', 'goal', 'journal_streak')),
+  source text not null check (source in ('journal', 'task', 'goal', 'journal_streak', 'todo_streak')),
   source_key text not null,
   picks int not null check (picks > 0),
   created_at timestamptz not null default now(),

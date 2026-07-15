@@ -5,6 +5,7 @@ import { getSupabase } from "@/lib/supabase";
 import { sanitizeHtml } from "@/lib/sanitize";
 import {
   PICKS_FOR,
+  TODO_BATCH,
   streakMilestoneDates,
   type Ingredient,
   type Salad,
@@ -36,7 +37,7 @@ function refreshPlanning() {
 // ---------- rewards ----------
 
 type GrantRow = {
-  source: "journal" | "task" | "goal" | "journal_streak";
+  source: "journal" | "task" | "goal" | "journal_streak" | "todo_streak";
   source_key: string;
   picks: number;
 };
@@ -105,6 +106,7 @@ export type EntryInput = {
   categoryId: string | null;
   startAt: string | null;
   endAt: string | null;
+  allDay: boolean;
   description: string | null;
 };
 
@@ -117,6 +119,7 @@ export async function createEntry(input: EntryInput): Promise<Entry> {
       category_id: input.categoryId,
       start_at: input.startAt,
       end_at: input.endAt,
+      all_day: input.allDay,
       description: input.description ? sanitizeHtml(input.description) : null,
     })
     .select()
@@ -134,6 +137,7 @@ export async function updateEntry(
     category_id: string | null;
     start_at: string | null;
     end_at: string | null;
+    all_day: boolean;
     description: string | null;
     status: EntryStatus;
   }>,
@@ -170,6 +174,24 @@ export async function setEntryStatus(
     picksAwarded = await grantPicks([
       { source: "goal", source_key: entry.id, picks: PICKS_FOR.goal },
     ]);
+  } else if (entry.type === "todo" && status === "done") {
+    // Every TODO_BATCH completed todos pays one pick. The milestone count is
+    // the source_key, so re-completing a reopened todo never double-pays.
+    const { count } = await db()
+      .from("entries")
+      .select("*", { count: "exact", head: true })
+      .eq("type", "todo")
+      .eq("status", "done");
+    const completed = count ?? 0;
+    if (completed > 0 && completed % TODO_BATCH === 0) {
+      picksAwarded = await grantPicks([
+        {
+          source: "todo_streak",
+          source_key: String(completed),
+          picks: PICKS_FOR.todoBatch,
+        },
+      ]);
+    }
   }
   return { picksAwarded };
 }
@@ -188,7 +210,7 @@ export async function scheduleEntry(
 ): Promise<void> {
   const { error } = await db()
     .from("entries")
-    .update({ start_at: startAt, end_at: endAt })
+    .update({ start_at: startAt, end_at: endAt, all_day: false })
     .eq("id", id);
   if (error) throw new Error(error.message);
   refreshPlanning();
@@ -196,12 +218,13 @@ export async function scheduleEntry(
 
 /**
  * Push a task's slot to a future date (keeping its time-of-day and duration),
- * so an overdue item becomes upcoming again. Also re-activates it.
+ * so an overdue item becomes upcoming again. Also re-activates it. A concrete
+ * slot means it is no longer all-day.
  */
 export async function postponeEntry(id: string, startAt: string, endAt: string) {
   const { error } = await db()
     .from("entries")
-    .update({ start_at: startAt, end_at: endAt, status: "active" })
+    .update({ start_at: startAt, end_at: endAt, all_day: false, status: "active" })
     .eq("id", id);
   if (error) throw new Error(error.message);
   refreshPlanning();

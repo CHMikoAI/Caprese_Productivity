@@ -255,8 +255,11 @@ export default function WeekCalendar({
     [journalEntries],
   );
 
+  // Everything that shows on the grid: has a date and isn't a todo (todos are
+  // reminders, never placed on the calendar). All-day entries live in the
+  // all-day band, timed ones in the day columns.
   const timedEntries = useMemo(
-    () => entries.filter((e) => e.start_at),
+    () => entries.filter((e) => e.start_at && e.type !== "todo"),
     [entries],
   );
 
@@ -276,7 +279,8 @@ export default function WeekCalendar({
   const entriesByDay = useMemo(() => {
     const byDay: PositionedEntry[][] = days.map(() => []);
     for (const entry of timedEntries) {
-      if (isMultiDayEntry(entry)) continue; // rendered in the all-day band
+      // All-day and multi-day entries render in the all-day band, not columns.
+      if (entry.all_day || isMultiDayEntry(entry)) continue;
       const start = new Date(entry.start_at!);
       const dayIndex = days.findIndex((d) => isSameDay(start, d));
       if (dayIndex === -1) continue;
@@ -291,7 +295,8 @@ export default function WeekCalendar({
     return byDay;
   }, [timedEntries, days]);
 
-  // Multi-day entries laid out as horizontal banners spanning the day columns.
+  // All-day and multi-day entries laid out as horizontal banners spanning the
+  // day columns.
   const allDay = useMemo(() => {
     if (days.length === 0) return { bars: [], rows: 0 };
     const weekStart = startOfDay(days[0]);
@@ -306,7 +311,7 @@ export default function WeekCalendar({
     };
     const bars: Bar[] = [];
     for (const entry of timedEntries) {
-      if (!isMultiDayEntry(entry)) continue;
+      if (!entry.all_day && !isMultiDayEntry(entry)) continue;
       const start = new Date(entry.start_at!);
       const end = new Date(entry.end_at!);
       if (start >= weekEnd || end <= weekStart) continue; // not in view
@@ -675,6 +680,7 @@ export default function WeekCalendar({
         category_id: result.categoryId,
         start_at: result.startAt,
         end_at: result.endAt,
+        all_day: result.allDay,
         description: result.description,
         status: "active",
         created_at: new Date().toISOString(),
@@ -686,6 +692,7 @@ export default function WeekCalendar({
         categoryId: result.categoryId,
         startAt: result.startAt,
         endAt: result.endAt,
+        allDay: result.allDay,
         description: result.description,
       })
         .then((created) => {
@@ -711,6 +718,7 @@ export default function WeekCalendar({
                 category_id: result.categoryId,
                 start_at: result.startAt,
                 end_at: result.endAt,
+                all_day: result.allDay,
                 description: result.description,
               }
             : e,
@@ -722,6 +730,7 @@ export default function WeekCalendar({
         category_id: result.categoryId,
         start_at: result.startAt,
         end_at: result.endAt,
+        all_day: result.allDay,
         description: result.description,
       })
         .then(() => router.refresh())

@@ -32,10 +32,14 @@ export const PICKS_FOR = {
   task: 2,
   goal: 3,
   journalStreak: 2,
+  todoBatch: 1,
 } as const;
 
 /** A streak bonus is paid every this many consecutive journal days. */
 export const STREAK_MILESTONE = 10;
+
+/** One pick is paid for every this many completed todos. */
+export const TODO_BATCH = 3;
 
 export type Salad = {
   id: string;

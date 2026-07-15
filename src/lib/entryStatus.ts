@@ -38,12 +38,16 @@ export function isFinished(entry: Entry, now: Date): boolean {
   );
 }
 
-/** Resolutions offered on an OPEN item, per type. */
+/** Resolutions offered on an OPEN item, per type. Todos resolve like tasks. */
 export const RESOLUTIONS: Record<
   Exclude<EntryType, "event">,
   { status: EntryStatus; label: string }[]
 > = {
   task: [
+    { status: "done", label: "Done" },
+    { status: "cancelled", label: "Cancel" },
+  ],
+  todo: [
     { status: "done", label: "Done" },
     { status: "cancelled", label: "Cancel" },
   ],

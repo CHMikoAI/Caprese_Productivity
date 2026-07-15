@@ -4,7 +4,7 @@ export type Category = {
   color: string;
 };
 
-export const ENTRY_TYPES = ["event", "task", "goal"] as const;
+export const ENTRY_TYPES = ["event", "task", "todo", "goal"] as const;
 export type EntryType = (typeof ENTRY_TYPES)[number];
 
 // Stored lifecycle status. `active` is the live state; the rest are terminal
@@ -19,14 +19,15 @@ export const ENTRY_STATUSES = [
 ] as const;
 export type EntryStatus = (typeof ENTRY_STATUSES)[number];
 
-/** A task, event or goal — they share the same shape. */
+/** A task, event, todo or goal — they share the same shape. */
 export type Entry = {
   id: string;
   type: EntryType;
   title: string;
   category_id: string | null;
-  start_at: string | null; // ISO; null = unscheduled (task/goal only)
-  end_at: string | null;
+  start_at: string | null; // ISO; null = unscheduled (task/goal) or a todo
+  end_at: string | null; // for a todo: the optional deadline
+  all_day: boolean; // date-only entry (no time-of-day)
   description: string | null; // sanitized HTML
   status: EntryStatus;
   created_at: string;
@@ -35,6 +36,7 @@ export type Entry = {
 export const ENTRY_TYPE_LABEL: Record<EntryType, string> = {
   task: "Task",
   event: "Event",
+  todo: "To do",
   goal: "Goal",
 };
 
