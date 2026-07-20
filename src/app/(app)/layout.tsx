@@ -30,7 +30,10 @@ export default async function AppLayout({
         saladsReady={saladsReady}
         saladArt={artSources().salad}
       />
-      <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+      {/* pb keeps the last row clear of the iOS home indicator */}
+      <main className="flex min-h-0 flex-1 flex-col pb-[env(safe-area-inset-bottom)]">
+        {children}
+      </main>
       <GlobalShortcuts />
     </>
   );

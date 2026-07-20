@@ -20,5 +20,10 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg).*)"],
+  // PWA assets stay public: the phone fetches the manifest, icons and the
+  // service worker outside of any session, so gating them would break
+  // "Add to Home Screen" and the offline fallback. None of them expose data.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|icon.svg|icons/|manifest.webmanifest|sw.js|offline).*)",
+  ],
 };

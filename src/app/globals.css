@@ -91,6 +91,14 @@ body {
 body {
   background-color: var(--color-neutral-950);
   color: var(--color-neutral-200);
+  /* Installed on iOS the page draws edge to edge (viewport-fit=cover), so keep
+     content clear of the rounded corners in landscape. The top inset is
+     handled by the sticky header, the bottom one by the app shell. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  /* App-like feel: no rubber-band bounce of the document itself. Inner
+     scrollers (the calendar grid, lists) keep their own momentum scrolling. */
+  overscroll-behavior-y: none;
 }
 
 /* Subtle scrollbars that fit the dark surfaces */

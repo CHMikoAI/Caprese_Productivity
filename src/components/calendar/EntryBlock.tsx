@@ -78,7 +78,7 @@ export default function EntryBlock({
       : ENTRY_TYPE_ICON[entry.type];
 
   const handleClass =
-    "absolute inset-x-0 z-10 flex h-2 touch-none cursor-ns-resize items-center justify-center";
+    "absolute inset-x-0 z-10 flex h-2 cursor-ns-resize items-center justify-center sm:touch-none";
   const grip = (
     <span className="h-1 w-5 rounded-full bg-white/80 opacity-0 shadow group-hover:opacity-100" />
   );
@@ -86,7 +86,10 @@ export default function EntryBlock({
   return (
     <div
       ref={ref}
-      className={`group absolute z-[5] cursor-pointer touch-none select-none overflow-hidden rounded-md px-1.5 text-left transition-[filter] hover:brightness-110 ${
+      // touch-action only from sm up: on phones a swipe/scroll over a block
+      // must pan the grid, so dragging blocks stays a pointer-device affordance
+      // (tapping still opens the editor).
+      className={`group absolute z-[5] cursor-pointer select-none overflow-hidden rounded-md px-1.5 text-left transition-[filter] hover:brightness-110 sm:touch-none ${
         heightPx <= 24 ? "py-0" : "py-1"
       } ${dimmed ? "opacity-30" : finished ? "opacity-60" : ""}`}
       style={{

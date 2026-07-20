@@ -28,7 +28,9 @@ export default function TopNav({
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-neutral-800/80 bg-neutral-950/85 backdrop-blur">
+    // pt keeps the bar below the iOS status bar when installed to the home
+    // screen (the page draws under it via viewport-fit=cover).
+    <header className="sticky top-0 z-40 border-b border-neutral-800/80 bg-neutral-950/85 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="flex h-16 items-center gap-2 px-3 sm:gap-8 sm:px-6">
         <Link href="/calendar" className="flex shrink-0 items-center gap-2.5">
           <Logo className="h-9 w-9" />

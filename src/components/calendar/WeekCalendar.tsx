@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, PanelRight, Plus } from "lucide-react";
 import {
@@ -64,6 +64,13 @@ const VIEW_OPTIONS: {
 ];
 
 const MOBILE_MEDIA = "(max-width: 639px)"; // Tailwind's `sm` breakpoint
+
+// Phone paging: the grid renders one extra page on each side of the visible
+// one and scrolls natively with scroll-snap. Swiping is therefore plain
+// browser scrolling (smooth, with momentum) — no re-render while it happens.
+// Once a swipe settles the anchor moves and the window is silently recentred.
+const GUTTER_PX = 56; // the w-14 time gutter
+const PAGES_EACH_SIDE = 1;
 
 type ModalState = {
   mode: "create" | "edit";
@@ -159,19 +166,11 @@ export default function WeekCalendar({
   } | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [isMobile, setIsMobile] = useState(false);
+  const [viewportW, setViewportW] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const colsRef = useRef<HTMLDivElement | null>(null);
   const gridInnerRef = useRef<HTMLDivElement | null>(null);
-  // Set the instant a horizontal swipe is recognised; makes the slot/entry
-  // pointer handlers stand down so a page swipe never opens a dialog or moves
-  // an event.
-  const horizontalSwipeRef = useRef(false);
-  const swipeRef = useRef<{
-    startX: number;
-    startY: number;
-    dir: null | "h" | "v";
-  } | null>(null);
   const dragRef = useRef<{
     entry: Entry;
     mode: "move" | "resize-top" | "resize-bottom";
@@ -235,15 +234,74 @@ export default function WeekCalendar({
     }
   }, [view]);
 
-  const days = useMemo(() => {
+  /** Days shown in one page (what the viewport holds at a time). */
+  const daysPerPage = view === "day" ? 1 : view === "3day" ? 3 : 7;
+
+  /** The days the user is looking at — drives the header, never the grid. */
+  const visibleDays = useMemo(() => {
     if (view === "day") return [anchor];
-    // 3-day view runs from the anchor forward (today + next two).
     if (view === "3day")
       return Array.from({ length: 3 }, (_, i) => addDays(anchor, i));
     const weekStart = startOfWeek(anchor);
     const count = view === "workweek" ? 5 : 7;
     return Array.from({ length: count }, (_, i) => addDays(weekStart, i));
   }, [anchor, view]);
+
+  /** Whether the phone paging (windowed days + scroll-snap) is in effect. */
+  const paging = isMobile && (view === "day" || view === "3day");
+
+  /**
+   * Days actually rendered. On phones that's the visible page plus one page
+   * either side, so a swipe scrolls into already-rendered content instead of
+   * re-rendering the grid.
+   */
+  const days = useMemo(() => {
+    if (!paging) return visibleDays;
+    const start = addDays(anchor, -PAGES_EACH_SIDE * daysPerPage);
+    const total = daysPerPage * (1 + 2 * PAGES_EACH_SIDE);
+    return Array.from({ length: total }, (_, i) => addDays(start, i));
+  }, [paging, visibleDays, anchor, daysPerPage]);
+
+  // Measure the scroll port so a page can be sized to exactly fill it.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => setViewportW(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [view]);
+
+  const dayWidth =
+    paging && viewportW > 0 ? (viewportW - GUTTER_PX) / daysPerPage : 0;
+  const pageWidth = dayWidth * daysPerPage;
+
+  // A settled swipe moves the anchor by whole pages…
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !pageWidth) return;
+    let timer: number | undefined;
+    const onScroll = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const delta = Math.round(el.scrollLeft / pageWidth) - PAGES_EACH_SIDE;
+        if (delta !== 0) setAnchor((a) => addDays(a, delta * daysPerPage));
+      }, 120);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      window.clearTimeout(timer);
+    };
+  }, [pageWidth, daysPerPage]);
+
+  // …and the window recentres before paint, so the jump is never visible.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !pageWidth) return;
+    el.scrollLeft = PAGES_EACH_SIDE * pageWidth;
+  }, [anchor, pageWidth]);
 
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
@@ -390,7 +448,6 @@ export default function WeekCalendar({
   }
 
   function onEntryPointerMove(e: React.PointerEvent<HTMLDivElement>) {
-    if (horizontalSwipeRef.current) return;
     const d = dragRef.current;
     if (!d || !colsRef.current) return;
     if (!d.moved) {
@@ -450,12 +507,6 @@ export default function WeekCalendar({
 
   function onEntryPointerUp() {
     // Suppress the trailing pointerup of a horizontal page swipe.
-    if (horizontalSwipeRef.current) {
-      dragRef.current = null;
-      dragStateRef.current = null;
-      setDrag(null);
-      return;
-    }
     const d = dragRef.current;
     dragRef.current = null;
     if (!d) return;
@@ -528,7 +579,6 @@ export default function WeekCalendar({
   }
 
   function onSlotPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
-    if (horizontalSwipeRef.current) return;
     const d = createDragRef.current;
     if (!d || !colsRef.current) return;
     if (!d.moved) {
@@ -564,12 +614,6 @@ export default function WeekCalendar({
     slotIndex: number,
   ) {
     // A page swipe ends with a pointerup on some slot — don't treat it as a tap.
-    if (horizontalSwipeRef.current) {
-      createDragRef.current = null;
-      createDragStateRef.current = null;
-      setCreateDrag(null);
-      return;
-    }
     const d = createDragRef.current;
     createDragRef.current = null;
     const sel = createDragStateRef.current;
@@ -758,12 +802,23 @@ export default function WeekCalendar({
   // ----- navigation -----
 
   const stepDays = view === "day" ? 1 : view === "3day" ? 3 : 7;
+
+  /** On phones the arrows scroll the grid; the settle handler moves the anchor. */
+  function scrollPages(dir: -1 | 1): boolean {
+    const el = scrollRef.current;
+    if (!paging || !el || !pageWidth) return false;
+    el.scrollBy({ left: dir * pageWidth, behavior: "smooth" });
+    return true;
+  }
+
   function goPrev() {
+    if (scrollPages(-1)) return;
     setAnchor((a) =>
       view === "month" ? addMonths(a, -1) : addDays(a, -stepDays),
     );
   }
   function goNext() {
+    if (scrollPages(1)) return;
     setAnchor((a) =>
       view === "month" ? addMonths(a, 1) : addDays(a, stepDays),
     );
@@ -771,91 +826,6 @@ export default function WeekCalendar({
   function goToday() {
     setAnchor(startOfDay(new Date()));
   }
-
-  // Mobile: swipe the grid left/right to page by `stepDays` (1 in day view,
-  // 3 in the 3-day view) — effectively infinite. Native horizontal scrolling
-  // isn't used here, so a swipe pages instead of revealing a sliver of a day.
-  useEffect(() => {
-    const sc = scrollRef.current;
-    const inner = gridInnerRef.current;
-    if (!sc || !inner || view === "month") return;
-
-    const cancelDrags = () => {
-      createDragRef.current = null;
-      createDragStateRef.current = null;
-      setCreateDrag(null);
-      dragRef.current = null;
-      dragStateRef.current = null;
-      setDrag(null);
-    };
-
-    const onStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      swipeRef.current = {
-        startX: e.touches[0].clientX,
-        startY: e.touches[0].clientY,
-        dir: null,
-      };
-      inner.style.transition = "none";
-    };
-    const onMove = (e: TouchEvent) => {
-      const s = swipeRef.current;
-      if (!s) return;
-      const dx = e.touches[0].clientX - s.startX;
-      const dy = e.touches[0].clientY - s.startY;
-      if (s.dir === null) {
-        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-        // Horizontal intent → page; vertical intent → let the time grid scroll.
-        s.dir = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
-        if (s.dir === "h") {
-          horizontalSwipeRef.current = true;
-          cancelDrags();
-        }
-      }
-      if (s.dir === "h") {
-        e.preventDefault();
-        inner.style.transform = `translateX(${dx}px)`;
-      }
-    };
-    const onEnd = (e: TouchEvent) => {
-      const s = swipeRef.current;
-      swipeRef.current = null;
-      if (!s || s.dir !== "h") return;
-      const endX = e.changedTouches[0]?.clientX ?? s.startX;
-      const dx = endX - s.startX;
-      const width = sc.clientWidth;
-      const commit = Math.abs(dx) > Math.min(80, width * 0.25);
-      inner.style.transition = "transform 180ms ease-out";
-      if (commit) {
-        const goingNext = dx < 0;
-        inner.style.transform = `translateX(${goingNext ? -width : width}px)`;
-        window.setTimeout(() => {
-          if (goingNext) goNext();
-          else goPrev();
-          inner.style.transition = "none";
-          inner.style.transform = "translateX(0)";
-          window.setTimeout(() => (horizontalSwipeRef.current = false), 60);
-        }, 180);
-      } else {
-        inner.style.transform = "translateX(0)";
-        window.setTimeout(() => (horizontalSwipeRef.current = false), 180);
-      }
-    };
-
-    sc.addEventListener("touchstart", onStart, { passive: true });
-    sc.addEventListener("touchmove", onMove, { passive: false });
-    sc.addEventListener("touchend", onEnd, { passive: true });
-    sc.addEventListener("touchcancel", onEnd, { passive: true });
-    return () => {
-      sc.removeEventListener("touchstart", onStart);
-      sc.removeEventListener("touchmove", onMove);
-      sc.removeEventListener("touchend", onEnd);
-      sc.removeEventListener("touchcancel", onEnd);
-    };
-    // goPrev/goNext are recreated per render but only their `view`-bound
-    // behaviour matters, and this rebinds whenever the view changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
 
   // Google-Calendar-style keys; inactive while typing or in a dialog.
   useShortcuts({
@@ -875,17 +845,23 @@ export default function WeekCalendar({
 
   // ----- render -----
 
-  const kw = isoWeek(days[Math.min(3, days.length - 1)]);
+  // The header follows the page in view, not the wider rendered window.
+  const kw = isoWeek(visibleDays[Math.min(3, visibleDays.length - 1)]);
   const headerMain = view === "month" ? monthLabel(anchor) : `KW ${kw}`;
   const headerSub =
     view === "month"
       ? ""
       : view === "day"
-        ? formatDayLong(days[0])
-        : dateRangeLabel(days[0], days[days.length - 1]);
+        ? formatDayLong(visibleDays[0])
+        : dateRangeLabel(visibleDays[0], visibleDays[visibleDays.length - 1]);
 
   const headerButton =
     "rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-100 sm:p-2";
+
+  // While paging each column is exactly one page-slice wide; otherwise the
+  // columns share the row as before.
+  const dayColStyle = paging && dayWidth ? { width: dayWidth } : undefined;
+  const dayColClass = paging && dayWidth ? "shrink-0" : "flex-1 basis-0";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -1013,31 +989,39 @@ export default function WeekCalendar({
         ) : (
           <div
             ref={scrollRef}
-            className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden sm:overflow-auto"
+            className={`min-w-0 flex-1 overflow-auto ${
+              paging
+                ? // native paging: snap a page at a time, keep the gutter clear
+                  // of the snap position, and don't trigger browser back-swipe
+                  "snap-x snap-mandatory scroll-pl-14 overscroll-x-contain"
+                : ""
+            }`}
           >
-            {/* On phones the columns fit the viewport (swipe to page). On
-                desktop the wider views keep a comfortable minimum width. */}
+            {/* While paging, the window is sized so one page fills the port
+                exactly; otherwise the wider desktop views keep a minimum. */}
             <div
               ref={gridInnerRef}
-              style={{
-                minWidth: isMobile
-                  ? undefined
-                  : view === "day"
-                    ? 360
-                    : view === "3day"
-                      ? 540
-                      : 640,
-              }}
+              style={
+                paging && dayWidth
+                  ? { width: GUTTER_PX + dayWidth * days.length }
+                  : {
+                      minWidth:
+                        view === "day" ? 360 : view === "3day" ? 540 : 640,
+                    }
+              }
             >
-              <div className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/95 backdrop-blur">
+              <div className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/80 backdrop-blur">
                 <div className="flex">
-                <div className="w-14 shrink-0" />
+                <div className="sticky left-0 z-10 w-14 shrink-0 bg-neutral-950/95 backdrop-blur" />
                 {days.map((day, i) => {
                   const isToday = isSameDay(day, now);
                   return (
                     <div
                       key={i}
-                      className="flex flex-1 basis-0 items-center justify-center gap-1.5 border-l border-neutral-800/40 py-2.5 text-sm"
+                      style={dayColStyle}
+                      className={`flex items-center justify-center gap-1.5 border-l border-neutral-800/40 py-2.5 text-sm ${dayColClass} ${
+                        paging && i % daysPerPage === 0 ? "snap-start" : ""
+                      }`}
                     >
                       <span
                         className={isToday ? "text-neutral-100" : "text-neutral-500"}
@@ -1061,7 +1045,7 @@ export default function WeekCalendar({
 
                 {allDay.rows > 0 && (
                   <div className="flex border-t border-neutral-800/60">
-                    <div className="flex w-14 shrink-0 items-start justify-end pr-2 pt-1.5 text-[10px] uppercase tracking-wide text-neutral-600">
+                    <div className="sticky left-0 z-10 flex w-14 shrink-0 items-start justify-end bg-neutral-950/95 pr-2 pt-1.5 text-[10px] uppercase tracking-wide text-neutral-600 backdrop-blur">
                       all day
                     </div>
                     <div
@@ -1128,7 +1112,7 @@ export default function WeekCalendar({
 
               <div className="flex">
                 <div
-                  className="relative w-14 shrink-0"
+                  className="sticky left-0 z-10 w-14 shrink-0 bg-neutral-950"
                   style={{ height: GRID_HEIGHT }}
                 >
                   {Array.from({ length: 23 }, (_, i) => i + 1).map((h) => (
@@ -1162,8 +1146,10 @@ export default function WeekCalendar({
                   {days.map((day, di) => (
                     <div
                       key={di}
-                      className="relative flex-1 basis-0 border-l border-neutral-800/40"
-                      style={{ height: GRID_HEIGHT }}
+                      className={`relative border-l border-neutral-800/40 ${dayColClass} ${
+                        paging && di % daysPerPage === 0 ? "snap-start" : ""
+                      }`}
+                      style={{ height: GRID_HEIGHT, ...dayColStyle }}
                     >
                       {Array.from({ length: 48 }, (_, s) => (
                         <button
