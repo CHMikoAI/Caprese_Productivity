@@ -30,7 +30,7 @@ export default function BottomNav({
       className="shrink-0 border-t border-neutral-800/80 bg-neutral-950/90 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
       aria-label="Primary"
     >
-      <div className="flex h-16 items-stretch">
+      <div className="flex h-12 items-stretch">
         {TABS.map(({ href, label, Icon }) => {
           const active = pathname.startsWith(href);
           return (
@@ -39,7 +39,7 @@ export default function BottomNav({
               href={href}
               aria-label={label}
               aria-current={active ? "page" : undefined}
-              className={`relative flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${
+              className={`relative flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium leading-none transition-colors ${
                 active
                   ? "text-accent"
                   : "text-neutral-500 hover:text-neutral-300"
@@ -47,7 +47,7 @@ export default function BottomNav({
             >
               <span className="relative">
                 <Icon
-                  className="h-6 w-6"
+                  className="h-[18px] w-[18px]"
                   strokeWidth={active ? 2.4 : 2}
                   aria-hidden
                 />
