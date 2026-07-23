@@ -31,11 +31,11 @@ export default async function AppLayout({
         saladsReady={saladsReady}
         saladArt={artSources().salad}
       />
-      {/* The bottom tab bar is fixed to the viewport bottom (always flush, no
-          matter how the mobile browser reports its height), so reserve room for
-          it — its 3.5rem height plus the home-indicator inset. Desktop navigates
-          from the top bar, so no reserve there. */}
-      <main className="flex min-h-0 flex-1 flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] sm:pb-0">
+      {/* The shell is a fixed-height flex column (see globals.css): `main`
+          scrolls, the bottom tab bar sits in normal flow beneath it. In an iOS
+          PWA that pins the bar to the true screen bottom — `position: fixed`
+          there leaves a black gap the height of a phantom Safari toolbar. */}
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {children}
       </main>
       <BottomNav pantryPicks={picks} />

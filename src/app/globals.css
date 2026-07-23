@@ -83,12 +83,21 @@
   color-scheme: dark;
 }
 
-html,
-body {
+html {
   height: 100%;
+  height: -webkit-fill-available;
 }
 
 body {
+  /* Fill the *real* available height. On an installed iOS PWA
+     `-webkit-fill-available` is the reliable full-screen height — `100vh`/
+     `100dvh` mis-measure there and leave a black gap beneath a bottom bar. The
+     shell itself doesn't scroll (`main` does), so the bottom tab bar sits in
+     normal flow, pinned to the true screen bottom rather than via `position:
+     fixed` (which iOS offsets up by a phantom toolbar in standalone mode). */
+  height: 100vh;
+  height: -webkit-fill-available;
+  overflow: hidden;
   background-color: var(--color-neutral-950);
   color: var(--color-neutral-200);
   /* Installed on iOS the page draws edge to edge (viewport-fit=cover), so keep
