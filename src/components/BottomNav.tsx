@@ -13,9 +13,10 @@ const TABS = [
 
 /**
  * Phone-only primary navigation: a thumb-reachable bottom tab bar with big
- * icon+label targets. Fixed to the viewport (so it survives document scroll);
- * `AppLayout` reserves matching bottom padding on the main area. Desktop keeps
- * the tabs in the top bar, so this is hidden from `sm` up.
+ * icon+label targets. It sits in normal flow at the bottom of the fixed-height
+ * app shell (see AppLayout / globals.css), so it never overlaps content and
+ * never jumps with the mobile browser toolbar. Desktop keeps the tabs in the
+ * top bar, so this is hidden from `sm` up.
  */
 export default function BottomNav({
   pantryPicks = 0,
@@ -26,7 +27,7 @@ export default function BottomNav({
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-800/80 bg-neutral-950/90 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
+      className="shrink-0 border-t border-neutral-800/80 bg-neutral-950/90 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
       aria-label="Primary"
     >
       <div className="flex h-16 items-stretch">

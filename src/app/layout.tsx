@@ -8,6 +8,14 @@ export const metadata: Metadata = {
   applicationName: "Caprese",
   manifest: "/manifest.webmanifest",
   icons: {
+    // The browser-tab favicon. Declaring `apple` alone suppresses Next's
+    // automatic link for app/icon.svg, so Chrome would get no tab icon —
+    // spell the icon out. SVG first (crisp at any size), PNG as a fallback.
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192.png", type: "image/png", sizes: "192x192" },
+    ],
+    shortcut: [{ url: "/icon.svg", type: "image/svg+xml" }],
     // iOS uses this one for the home screen (it ignores SVG icons there).
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
   },
@@ -44,7 +52,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="flex min-h-full flex-col font-sans">
+      <body className="flex flex-col font-sans">
         {children}
         <ServiceWorker />
       </body>

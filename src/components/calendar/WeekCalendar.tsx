@@ -174,6 +174,7 @@ export default function WeekCalendar({
   const [now, setNow] = useState(() => new Date());
   const [isMobile, setIsMobile] = useState(false);
   const [viewportW, setViewportW] = useState(0);
+  const [monthW, setMonthW] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const colsRef = useRef<HTMLDivElement | null>(null);
@@ -184,6 +185,12 @@ export default function WeekCalendar({
   const allDayStripRef = useRef<HTMLDivElement | null>(null);
   const bodyStripRef = useRef<HTMLDivElement | null>(null);
   const animatingRef = useRef(false);
+  // Month pager (phones): a strip of prev/current/next months translated by the
+  // same axis-locked swipe. `suppressClickRef` swallows the day-cell click that
+  // would otherwise fire at the end of a swipe.
+  const monthRootRef = useRef<HTMLDivElement | null>(null);
+  const monthStripRef = useRef<HTMLDivElement | null>(null);
+  const suppressClickRef = useRef(false);
   const dragRef = useRef<{
     entry: Entry;
     mode: "move" | "resize-top" | "resize-bottom";
@@ -262,6 +269,9 @@ export default function WeekCalendar({
 
   /** Whether the phone paging (windowed days + transform pager) is in effect. */
   const paging = isMobile && (view === "day" || view === "3day");
+
+  /** Phone month view pages between months with the same swipe gesture. */
+  const monthPaging = isMobile && view === "month";
 
   /**
    * Days actually rendered. On phones that's the visible page plus one page
@@ -419,6 +429,100 @@ export default function WeekCalendar({
       root.removeEventListener("touchcancel", onEnd);
     };
   }, [paging, pageWidth, daysPerPage]);
+
+  // ----- month pager (phones): swipe left/right to change month -----
+
+  // Measure the month pager port so each month is sized to exactly fill it.
+  useLayoutEffect(() => {
+    const el = monthRootRef.current;
+    if (el) setMonthW(el.clientWidth);
+  }, [view, isMobile]);
+  useEffect(() => {
+    const el = monthRootRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setMonthW(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [view, isMobile]);
+
+  // Recentre the month strip on the middle (current) month before paint.
+  useLayoutEffect(() => {
+    if (!monthPaging || !monthW) return;
+    const el = monthStripRef.current;
+    if (el) {
+      el.style.transition = "none";
+      el.style.transform = `translate3d(${-monthW}px, 0, 0)`;
+    }
+  }, [anchor, monthW, monthPaging]);
+
+  useEffect(() => {
+    if (!monthPaging || !monthW) return;
+    const root = monthRootRef.current;
+    const strip = monthStripRef.current;
+    if (!root || !strip) return;
+    let startX = 0;
+    let startY = 0;
+    let axis: "x" | "y" | null = null;
+
+    const onStart = (e: TouchEvent) => {
+      if (animatingRef.current || e.touches.length !== 1) {
+        axis = "y";
+        return;
+      }
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      axis = null;
+      strip.style.transition = "none";
+    };
+    const onMove = (e: TouchEvent) => {
+      if (axis === "y" || e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (axis === null) {
+        if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
+        axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      }
+      if (axis === "x") {
+        e.preventDefault();
+        strip.style.transform = `translate3d(${-monthW + dx}px, 0, 0)`;
+      }
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (axis !== "x") {
+        axis = null;
+        return;
+      }
+      axis = null;
+      const dx = (e.changedTouches[0]?.clientX ?? startX) - startX;
+      // A real horizontal swipe must not also fire the tapped day cell's click.
+      if (Math.abs(dx) > AXIS_LOCK_PX) {
+        suppressClickRef.current = true;
+        window.setTimeout(() => (suppressClickRef.current = false), 400);
+      }
+      const commit = Math.max(monthW * 0.18, 44);
+      const delta = dx <= -commit ? 1 : dx >= commit ? -1 : 0;
+      animatingRef.current = true;
+      strip.style.transition = SWIPE_TRANSITION;
+      strip.style.transform = `translate3d(${-monthW - delta * monthW}px, 0, 0)`;
+      window.setTimeout(() => {
+        strip.style.transition = "none";
+        animatingRef.current = false;
+        if (delta !== 0) setAnchor((a) => addMonths(a, delta));
+        else strip.style.transform = `translate3d(${-monthW}px, 0, 0)`;
+      }, SWIPE_MS + 20);
+    };
+
+    root.addEventListener("touchstart", onStart, { passive: true });
+    root.addEventListener("touchmove", onMove, { passive: false });
+    root.addEventListener("touchend", onEnd, { passive: true });
+    root.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      root.removeEventListener("touchstart", onStart);
+      root.removeEventListener("touchmove", onMove);
+      root.removeEventListener("touchend", onEnd);
+      root.removeEventListener("touchcancel", onEnd);
+    };
+  }, [monthPaging, monthW]);
 
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
@@ -1154,6 +1258,51 @@ export default function WeekCalendar({
     </>
   );
 
+  const renderMonth = (monthAnchor: Date) => (
+    <MonthView
+      anchor={monthAnchor}
+      now={now}
+      entries={timedEntries}
+      categoryById={categoryById}
+      journalByDate={journalByDate}
+      dragTask={dragTask}
+      onCreateAt={(day) =>
+        setModal({
+          mode: "create",
+          initial: createInitial(
+            "event",
+            addMinutes(startOfDay(day), 9 * 60),
+            true,
+          ),
+        })
+      }
+      onSelectEntry={(entry) =>
+        setModal({ mode: "edit", entryId: entry.id, initial: editInitial(entry) })
+      }
+      onDropTaskOnDay={(day) => {
+        const task = dragTask;
+        setDragTask(null);
+        if (!task) return;
+        const start = addMinutes(startOfDay(day), 9 * 60);
+        const end = addMinutes(start, TASK_DROP_DURATION);
+        const prev = entries;
+        setEntries((list) =>
+          list.map((ev) =>
+            ev.id === task.id
+              ? { ...ev, start_at: start.toISOString(), end_at: end.toISOString() }
+              : ev,
+          ),
+        );
+        scheduleEntry(task.id, start.toISOString(), end.toISOString())
+          .then(() => router.refresh())
+          .catch(() => {
+            setEntries(prev);
+            showError("Could not schedule the task.");
+          });
+      }}
+    />
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-neutral-800/80 px-4 py-3 sm:px-6">
@@ -1198,11 +1347,20 @@ export default function WeekCalendar({
           >
             Today
           </button>
-          <button onClick={goPrev} className={headerButton} aria-label="Previous">
-            <ChevronLeft className="h-5 w-5 sm:h-4 sm:w-4" />
+          {/* Arrows are for pointer devices; on phones you swipe the grid. */}
+          <button
+            onClick={goPrev}
+            className={`hidden sm:block ${headerButton}`}
+            aria-label="Previous"
+          >
+            <ChevronLeft className="h-4 w-4" />
           </button>
-          <button onClick={goNext} className={headerButton} aria-label="Next">
-            <ChevronRight className="h-5 w-5 sm:h-4 sm:w-4" />
+          <button
+            onClick={goNext}
+            className={`hidden sm:block ${headerButton}`}
+            aria-label="Next"
+          >
+            <ChevronRight className="h-4 w-4" />
           </button>
           <button
             onClick={() =>
@@ -1231,52 +1389,40 @@ export default function WeekCalendar({
 
       <div className="relative flex min-h-0 flex-1">
         {view === "month" ? (
-          <MonthView
-            anchor={anchor}
-            now={now}
-            entries={timedEntries}
-            categoryById={categoryById}
-            journalByDate={journalByDate}
-            dragTask={dragTask}
-            onCreateAt={(day) =>
-              setModal({
-                mode: "create",
-                initial: createInitial(
-                  "event",
-                  addMinutes(startOfDay(day), 9 * 60),
-                  true,
-                ),
-              })
-            }
-            onSelectEntry={(entry) =>
-              setModal({ mode: "edit", entryId: entry.id, initial: editInitial(entry) })
-            }
-            onDropTaskOnDay={(day) => {
-              const task = dragTask;
-              setDragTask(null);
-              if (!task) return;
-              const start = addMinutes(startOfDay(day), 9 * 60);
-              const end = addMinutes(start, TASK_DROP_DURATION);
-              const prev = entries;
-              setEntries((list) =>
-                list.map((ev) =>
-                  ev.id === task.id
-                    ? {
-                        ...ev,
-                        start_at: start.toISOString(),
-                        end_at: end.toISOString(),
-                      }
-                    : ev,
-                ),
-              );
-              scheduleEntry(task.id, start.toISOString(), end.toISOString())
-                .then(() => router.refresh())
-                .catch(() => {
-                  setEntries(prev);
-                  showError("Could not schedule the task.");
-                });
-            }}
-          />
+          monthPaging ? (
+            // ---- phone month pager: a prev/current/next strip driven by the
+            // same axis-locked swipe as the day views ----
+            <div
+              ref={monthRootRef}
+              className="relative min-h-0 flex-1 overflow-hidden"
+              style={{ touchAction: "pan-y" }}
+              onClickCapture={(e) => {
+                // swallow the click a settled swipe would otherwise land on a cell
+                if (suppressClickRef.current) {
+                  e.stopPropagation();
+                  e.preventDefault();
+                }
+              }}
+            >
+              <div
+                ref={monthStripRef}
+                className="flex h-full will-change-transform"
+                style={{ width: monthW ? monthW * 3 : undefined }}
+              >
+                {[-1, 0, 1].map((off) => (
+                  <div
+                    key={off}
+                    className="flex h-full shrink-0 flex-col"
+                    style={{ width: monthW || undefined }}
+                  >
+                    {renderMonth(addMonths(anchor, off))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            renderMonth(anchor)
+          )
         ) : paging ? (
           // ---- phone pager: fixed header band + vertical-only scrolling body,
           // with day columns/labels driven horizontally by the swipe gesture ----
@@ -1323,7 +1469,7 @@ export default function WeekCalendar({
             >
               <div className="flex">
                 <div
-                  className="w-14 shrink-0 bg-neutral-950"
+                  className="relative w-14 shrink-0 bg-neutral-950"
                   style={{ height: GRID_HEIGHT }}
                 >
                   {hourGutter}

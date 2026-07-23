@@ -31,9 +31,10 @@ export default async function AppLayout({
         saladsReady={saladsReady}
         saladArt={artSources().salad}
       />
-      {/* On phones the bottom tab bar is fixed, so reserve room for it (plus the
-          home-indicator inset). Desktop navigates from the top bar — no reserve. */}
-      <main className="flex min-h-0 flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">
+      {/* The shell is a fixed-height flex column (see globals.css): `main` is the
+          scroll area, the bottom tab bar sits in normal flow beneath it. Nothing
+          scrolls the document, so the mobile toolbar — and the bar — stay put. */}
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {children}
       </main>
       <BottomNav pantryPicks={picks} />
