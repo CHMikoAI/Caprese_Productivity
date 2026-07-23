@@ -29,6 +29,7 @@ export default function EntryBlock({
   onPointerDown,
   onPointerMove,
   onPointerUp,
+  onPointerCancel,
   onResizePointerDown,
 }: {
   item: PositionedEntry;
@@ -39,6 +40,7 @@ export default function EntryBlock({
   onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
   onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
   onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerCancel: (e: React.PointerEvent<HTMLDivElement>) => void;
   onResizePointerDown: (
     e: React.PointerEvent<HTMLDivElement>,
     edge: "top" | "bottom",
@@ -107,6 +109,7 @@ export default function EntryBlock({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onClick={(e) => e.stopPropagation()}
     >
       {showTopHandle && (
@@ -115,6 +118,7 @@ export default function EntryBlock({
           onPointerDown={(e) => onResizePointerDown(e, "top")}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
         >
           {grip}
         </div>
@@ -161,6 +165,7 @@ export default function EntryBlock({
           onPointerDown={(e) => onResizePointerDown(e, "bottom")}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
         >
           {grip}
         </div>

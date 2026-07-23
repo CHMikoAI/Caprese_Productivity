@@ -194,13 +194,15 @@ export default function EntryModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4">
       <div
-        className={`my-auto w-full max-w-2xl rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl ${
-          notesExpanded ? "flex h-[85vh] flex-col" : ""
+        className={`flex w-full max-w-2xl flex-col rounded-t-2xl border border-neutral-800 bg-neutral-900 shadow-2xl sm:rounded-2xl ${
+          notesExpanded
+            ? "h-[92dvh] sm:h-[85vh]"
+            : "max-h-[92dvh] sm:max-h-[90vh]"
         }`}
       >
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-5 pb-4 pt-5 sm:px-6">
           <h2 className="text-base font-semibold text-neutral-100">
             {mode === "create" ? "New" : `Edit ${ENTRY_TYPE_LABEL[type].toLowerCase()}`}
           </h2>
@@ -215,8 +217,8 @@ export default function EntryModal({
                   onClick={() => changeType(t)}
                   className={
                     type === t
-                      ? "flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 font-medium text-white"
-                      : "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-neutral-400 transition-colors hover:text-neutral-200"
+                      ? "flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 font-medium text-white sm:px-2.5 sm:py-1.5"
+                      : "flex items-center gap-1.5 rounded-md px-3 py-2 text-neutral-400 transition-colors hover:text-neutral-200 sm:px-2.5 sm:py-1.5"
                   }
                 >
                   <Icon className="h-3.5 w-3.5" />
@@ -227,10 +229,8 @@ export default function EntryModal({
           </div>
         </div>
 
-        <form
-          onSubmit={submit}
-          className={`flex flex-col gap-4 ${notesExpanded ? "min-h-0 flex-1" : ""}`}
-        >
+        <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pb-4 pt-1 sm:px-6">
           {/* title + category */}
           {!notesExpanded && (
           <input
@@ -427,29 +427,31 @@ export default function EntryModal({
           </div>
 
           {error && <p className="text-sm text-accent">{error}</p>}
+          </div>
 
-          <div className="mt-1 flex items-center gap-2">
+          {/* action bar — pinned below the scrollable body */}
+          <div className="flex items-center gap-2 border-t border-neutral-800 px-5 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-6 sm:pb-3">
             {mode === "edit" && onDelete && (
               <button
                 type="button"
                 onClick={onDelete}
-                className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-accent"
+                className="flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-accent sm:py-2"
               >
                 <Trash2 className="h-4 w-4" />
-                Delete
+                <span className="hidden sm:inline">Delete</span>
               </button>
             )}
             <div className="ml-auto flex gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-xl px-4 py-2 text-sm text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+                className="rounded-xl px-4 py-2.5 text-sm text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 sm:py-2"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="rounded-xl bg-accent px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                className="rounded-xl bg-accent px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 sm:py-2"
               >
                 Save
               </button>

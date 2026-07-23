@@ -2,19 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { BookText, CalendarDays, FolderKanban } from "lucide-react";
 import Logo from "./Logo";
 import PantryArt from "@/components/pantry/PantryArt";
 
 const TABS = [
-  { href: "/calendar", label: "Calendar" },
-  { href: "/planner", label: "Planner" },
-  { href: "/journal", label: "Journal" },
+  { href: "/calendar", label: "Calendar", Icon: CalendarDays },
+  { href: "/planner", label: "Planner", Icon: FolderKanban },
+  { href: "/journal", label: "Journal", Icon: BookText },
 ];
 
 const tabClass = (active: boolean) =>
-  active
-    ? "flex items-center rounded-lg bg-neutral-800/70 px-1.5 py-1.5 font-medium text-neutral-50 sm:px-3"
-    : "flex items-center rounded-lg px-1.5 py-1.5 text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200 sm:px-3";
+  `flex items-center gap-2 rounded-lg px-3 py-2 font-medium transition-colors ${
+    active
+      ? "bg-neutral-800/70 text-neutral-50"
+      : "text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200"
+  }`;
 
 export default function TopNav({
   pantryPicks = 0,
@@ -34,52 +37,56 @@ export default function TopNav({
       <div className="flex h-16 items-center gap-2 px-3 sm:gap-8 sm:px-6">
         <Link href="/calendar" className="flex shrink-0 items-center gap-2.5">
           <Logo className="h-9 w-9" />
-          {/* wordmark is a luxury the phone header can't afford */}
-          <span className="hidden text-2xl font-bold tracking-tight text-neutral-50 sm:block">
+          <span className="text-xl font-bold tracking-tight text-neutral-50 sm:text-2xl">
             Caprese
           </span>
         </Link>
-        <nav className="flex min-w-0 flex-1 items-center gap-0.5 text-xs sm:gap-1 sm:text-sm">
-          {TABS.map((tab) => (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className={tabClass(pathname.startsWith(tab.href))}
-            >
-              {tab.label}
-            </Link>
-          ))}
+
+        {/* Primary tabs live here on desktop; on phones they move to the bottom
+            tab bar, so this nav is hidden below `sm`. */}
+        <nav className="hidden min-w-0 flex-1 items-center gap-1 text-sm sm:flex">
+          {TABS.map((tab) => {
+            const active = pathname.startsWith(tab.href);
+            return (
+              <Link key={tab.href} href={tab.href} className={tabClass(active)}>
+                <tab.Icon className="h-4 w-4" aria-hidden />
+                {tab.label}
+              </Link>
+            );
+          })}
 
           {/* pantry deliberately sits on the far right, next to the tracker */}
-          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
-            <Link href="/pantry" className={tabClass(pathname.startsWith("/pantry"))}>
-              Pantry
-              {pantryPicks > 0 && (
-                <span className="ml-1 rounded-full bg-accent px-1.5 py-px text-[11px] font-semibold leading-4 text-white sm:ml-1.5">
-                  {pantryPicks}
-                </span>
-              )}
-            </Link>
-            {/* caprese tracker: salads on the account */}
-            <Link
-              href="/pantry"
-              title={`${saladsReady} ${saladsReady === 1 ? "salad" : "salads"} ready to redeem`}
-              className="flex items-center gap-1 rounded-full border border-neutral-800 bg-neutral-900/60 py-1 pl-1 pr-2 transition-colors hover:border-neutral-600 sm:gap-1.5 sm:pr-2.5"
-            >
-              <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-[#F6F1E7] sm:h-7 sm:w-7">
-                <PantryArt
-                  src={saladArt}
-                  alt="Caprese salad"
-                  size={24}
-                  className="h-5 w-5 object-contain sm:h-6 sm:w-6"
-                />
+          <Link
+            href="/pantry"
+            className={`ml-auto ${tabClass(pathname.startsWith("/pantry"))}`}
+          >
+            Pantry
+            {pantryPicks > 0 && (
+              <span className="rounded-full bg-accent px-1.5 py-px text-[11px] font-semibold leading-4 text-white">
+                {pantryPicks}
               </span>
-              <span className="text-xs font-semibold tabular-nums text-neutral-100 sm:text-sm">
-                {saladsReady}
-              </span>
-            </Link>
-          </div>
+            )}
+          </Link>
         </nav>
+
+        {/* caprese tracker: salads on the account — kept visible on every screen */}
+        <Link
+          href="/pantry"
+          title={`${saladsReady} ${saladsReady === 1 ? "salad" : "salads"} ready to redeem`}
+          className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900/60 py-1 pl-1 pr-2.5 transition-colors hover:border-neutral-600 sm:ml-0"
+        >
+          <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-[#F6F1E7]">
+            <PantryArt
+              src={saladArt}
+              alt="Caprese salad"
+              size={24}
+              className="h-6 w-6 object-contain"
+            />
+          </span>
+          <span className="text-sm font-semibold tabular-nums text-neutral-100">
+            {saladsReady}
+          </span>
+        </Link>
       </div>
     </header>
   );

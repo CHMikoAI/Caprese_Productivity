@@ -123,3 +123,16 @@ input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
 }
+
+/* iOS Safari zooms toward any form control whose text is below 16px the moment
+   it gains focus — the classic "the page is zoomed after opening New" bug. Pin
+   every control to 16px on phones so focusing never zooms; it also makes them
+   comfortably tappable. Paired with the no-scale viewport, the app never zooms. */
+@media (max-width: 639px) {
+  input,
+  select,
+  textarea,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+  }
+}

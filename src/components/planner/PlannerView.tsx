@@ -377,11 +377,13 @@ export default function PlannerView({
   // ----- row rendering -----
 
   const ghostBtn =
-    "flex items-center gap-1 rounded-lg border border-neutral-700 px-2.5 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800";
+    "flex items-center gap-1 rounded-lg border border-neutral-700 px-3 py-2 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800 sm:px-2.5 sm:py-1.5";
   const primaryBtn =
-    "flex items-center gap-1 rounded-lg bg-accent px-2.5 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90";
+    "flex items-center gap-1 rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 sm:px-2.5 sm:py-1.5";
+  // Touch has no hover, so the reveal-on-hover trick would leave these buttons
+  // invisible on phones — show them there, keep the desktop hover-reveal.
   const iconBtn =
-    "rounded-lg p-1.5 text-neutral-600 opacity-0 transition-all hover:bg-neutral-800 hover:text-neutral-200 group-hover:opacity-100";
+    "rounded-lg p-2 text-neutral-400 transition-all hover:bg-neutral-800 hover:text-neutral-200 sm:p-1.5 sm:text-neutral-600 sm:opacity-0 sm:group-hover:opacity-100";
 
   function Row({
     entry,

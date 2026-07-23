@@ -180,14 +180,14 @@ export default function ProjectsModal({
                     setEditName(project.name);
                     setEditColor(project.color);
                   }}
-                  className="rounded-md p-1 text-neutral-600 opacity-0 transition-all hover:bg-neutral-800 hover:text-neutral-200 group-hover:opacity-100"
+                  className="rounded-md p-2 text-neutral-400 transition-all hover:bg-neutral-800 hover:text-neutral-200 sm:p-1 sm:text-neutral-600 sm:opacity-0 sm:group-hover:opacity-100"
                   aria-label="Edit project"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
                 <button
                   onClick={() => removeProject(project)}
-                  className="rounded-md p-1 text-neutral-600 opacity-0 transition-all hover:bg-neutral-800 hover:text-accent group-hover:opacity-100"
+                  className="rounded-md p-2 text-neutral-400 transition-all hover:bg-neutral-800 hover:text-accent sm:p-1 sm:text-neutral-600 sm:opacity-0 sm:group-hover:opacity-100"
                   aria-label="Delete project"
                 >
                   <Trash2 className="h-3.5 w-3.5" />

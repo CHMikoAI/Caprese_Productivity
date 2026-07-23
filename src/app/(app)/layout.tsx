@@ -1,3 +1,4 @@
+import BottomNav from "@/components/BottomNav";
 import GlobalShortcuts from "@/components/GlobalShortcuts";
 import TopNav from "@/components/TopNav";
 import { artSources } from "@/lib/pantryArt";
@@ -30,10 +31,12 @@ export default async function AppLayout({
         saladsReady={saladsReady}
         saladArt={artSources().salad}
       />
-      {/* pb keeps the last row clear of the iOS home indicator */}
-      <main className="flex min-h-0 flex-1 flex-col pb-[env(safe-area-inset-bottom)]">
+      {/* On phones the bottom tab bar is fixed, so reserve room for it (plus the
+          home-indicator inset). Desktop navigates from the top bar — no reserve. */}
+      <main className="flex min-h-0 flex-1 flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0">
         {children}
       </main>
+      <BottomNav pantryPicks={picks} />
       <GlobalShortcuts />
     </>
   );

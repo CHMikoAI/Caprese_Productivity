@@ -65,12 +65,19 @@ const VIEW_OPTIONS: {
 
 const MOBILE_MEDIA = "(max-width: 639px)"; // Tailwind's `sm` breakpoint
 
-// Phone paging: the grid renders one extra page on each side of the visible
-// one and scrolls natively with scroll-snap. Swiping is therefore plain
-// browser scrolling (smooth, with momentum) — no re-render while it happens.
-// Once a swipe settles the anchor moves and the window is silently recentred.
+// Phone paging. The vertical (time) axis is its own scroll container; the
+// horizontal (day) axis is a transform-based pager driven by touch. A gesture
+// locks to a single axis on its first move, so a swipe is *either* vertical or
+// horizontal — never a diagonal mixture — and a sideways swipe never disturbs
+// the vertical position. The grid renders one page either side of the visible
+// one so a swipe slides into already-rendered days; on settle the anchor moves
+// and the pager silently recentres before paint.
 const GUTTER_PX = 56; // the w-14 time gutter
 const PAGES_EACH_SIDE = 1;
+const AXIS_LOCK_PX = 8; // finger travel before a swipe commits to one axis
+const SWIPE_MS = 260;
+const SWIPE_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
+const SWIPE_TRANSITION = `transform ${SWIPE_MS}ms ${SWIPE_EASE}`;
 
 type ModalState = {
   mode: "create" | "edit";
@@ -170,7 +177,13 @@ export default function WeekCalendar({
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const colsRef = useRef<HTMLDivElement | null>(null);
-  const gridInnerRef = useRef<HTMLDivElement | null>(null);
+  // Phone pager: the three horizontally-translated strips (day headers, the
+  // all-day band, the columns) plus the element the swipe gesture listens on.
+  const mobileRootRef = useRef<HTMLDivElement | null>(null);
+  const headerStripRef = useRef<HTMLDivElement | null>(null);
+  const allDayStripRef = useRef<HTMLDivElement | null>(null);
+  const bodyStripRef = useRef<HTMLDivElement | null>(null);
+  const animatingRef = useRef(false);
   const dragRef = useRef<{
     entry: Entry;
     mode: "move" | "resize-top" | "resize-bottom";
@@ -232,7 +245,7 @@ export default function WeekCalendar({
     if (view !== "month") {
       scrollRef.current?.scrollTo({ top: SCROLL_TO_HOUR * HOUR_PX });
     }
-  }, [view]);
+  }, [view, isMobile]);
 
   /** Days shown in one page (what the viewport holds at a time). */
   const daysPerPage = view === "day" ? 1 : view === "3day" ? 3 : 7;
@@ -247,13 +260,13 @@ export default function WeekCalendar({
     return Array.from({ length: count }, (_, i) => addDays(weekStart, i));
   }, [anchor, view]);
 
-  /** Whether the phone paging (windowed days + scroll-snap) is in effect. */
+  /** Whether the phone paging (windowed days + transform pager) is in effect. */
   const paging = isMobile && (view === "day" || view === "3day");
 
   /**
    * Days actually rendered. On phones that's the visible page plus one page
-   * either side, so a swipe scrolls into already-rendered content instead of
-   * re-rendering the grid.
+   * either side, so a swipe slides into already-rendered content instead of
+   * re-rendering the grid mid-gesture.
    */
   const days = useMemo(() => {
     if (!paging) return visibleDays;
@@ -262,46 +275,150 @@ export default function WeekCalendar({
     return Array.from({ length: total }, (_, i) => addDays(start, i));
   }, [paging, visibleDays, anchor, daysPerPage]);
 
-  // Measure the scroll port so a page can be sized to exactly fill it.
+  // Measure the scroll port so a page can be sized to exactly fill it. The
+  // layout pass measures synchronously (no empty first frame); the observer
+  // keeps it in sync on later resizes / rotation.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (el) setViewportW(el.clientWidth);
+  }, [view, isMobile]);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const measure = () => setViewportW(el.clientWidth);
-    measure();
-    const ro = new ResizeObserver(measure);
+    const ro = new ResizeObserver(() => setViewportW(el.clientWidth));
     ro.observe(el);
     return () => ro.disconnect();
-  }, [view]);
+  }, [view, isMobile]);
 
   const dayWidth =
     paging && viewportW > 0 ? (viewportW - GUTTER_PX) / daysPerPage : 0;
   const pageWidth = dayWidth * daysPerPage;
+  const stripWidth = dayWidth * days.length;
 
-  // A settled swipe moves the anchor by whole pages…
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !pageWidth) return;
-    let timer: number | undefined;
-    const onScroll = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        const delta = Math.round(el.scrollLeft / pageWidth) - PAGES_EACH_SIDE;
-        if (delta !== 0) setAnchor((a) => addDays(a, delta * daysPerPage));
-      }, 120);
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      window.clearTimeout(timer);
-    };
-  }, [pageWidth, daysPerPage]);
+  // ----- phone pager: transform + axis-locked swipe -----
 
-  // …and the window recentres before paint, so the jump is never visible.
+  const setStripTransform = (x: number) => {
+    const t = `translate3d(${x}px, 0, 0)`;
+    for (const el of [
+      headerStripRef.current,
+      allDayStripRef.current,
+      bodyStripRef.current,
+    ]) {
+      if (el) el.style.transform = t;
+    }
+  };
+
+  const setStripTransition = (value: string) => {
+    for (const el of [
+      headerStripRef.current,
+      allDayStripRef.current,
+      bodyStripRef.current,
+    ]) {
+      if (el) el.style.transition = value;
+    }
+  };
+
+  // Recentre the pager on the middle page whenever the anchor (a settled swipe)
+  // or the page width changes. Runs before paint so the recentre is invisible.
   useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !pageWidth) return;
-    el.scrollLeft = PAGES_EACH_SIDE * pageWidth;
-  }, [anchor, pageWidth]);
+    if (!paging || !pageWidth) return;
+    setStripTransition("none");
+    setStripTransform(-pageWidth);
+  }, [anchor, pageWidth, paging]);
+
+  /** Animate to the previous/next page, then commit the anchor. */
+  function animateToPage(delta: -1 | 1): boolean {
+    if (!paging || !pageWidth) return false;
+    if (animatingRef.current) return true;
+    animatingRef.current = true;
+    setStripTransition(SWIPE_TRANSITION);
+    setStripTransform(-pageWidth - delta * pageWidth);
+    window.setTimeout(() => {
+      setStripTransition("none");
+      animatingRef.current = false;
+      setAnchor((a) => addDays(a, delta * daysPerPage));
+    }, SWIPE_MS + 20);
+    return true;
+  }
+
+  // The swipe gesture. `touch-action: pan-y` lets the browser own vertical
+  // scrolling while it hands us the horizontal component; we pick the axis on
+  // the first meaningful move and, once horizontal, drive the transform and
+  // preventDefault so the vertical axis stays put.
+  useEffect(() => {
+    if (!paging || !pageWidth) return;
+    const root = mobileRootRef.current;
+    if (!root) return;
+    let startX = 0;
+    let startY = 0;
+    let axis: "x" | "y" | null = null;
+
+    const onStart = (e: TouchEvent) => {
+      if (animatingRef.current || e.touches.length !== 1) {
+        axis = "y"; // ignore multi-touch / in-flight animations
+        return;
+      }
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      axis = null;
+      setStripTransition("none");
+    };
+
+    const onMove = (e: TouchEvent) => {
+      if (axis === "y" || e.touches.length !== 1) return;
+      const dx = e.touches[0].clientX - startX;
+      const dy = e.touches[0].clientY - startY;
+      if (axis === null) {
+        if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
+        axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        if (axis === "x") {
+          // A horizontal swipe pages the grid, so abort any pending tap / create
+          // / entry interaction — its trailing pointerup then does nothing.
+          dragRef.current = null;
+          dragStateRef.current = null;
+          createDragRef.current = null;
+          createDragStateRef.current = null;
+          setDrag(null);
+          setCreateDrag(null);
+        }
+      }
+      if (axis === "x") {
+        e.preventDefault();
+        setStripTransform(-pageWidth + dx);
+      }
+    };
+
+    const onEnd = (e: TouchEvent) => {
+      if (axis !== "x") {
+        axis = null;
+        return;
+      }
+      axis = null;
+      const dx = (e.changedTouches[0]?.clientX ?? startX) - startX;
+      const commit = Math.max(pageWidth * 0.18, 44);
+      const delta = dx <= -commit ? 1 : dx >= commit ? -1 : 0;
+      animatingRef.current = true;
+      setStripTransition(SWIPE_TRANSITION);
+      setStripTransform(-pageWidth - delta * pageWidth);
+      window.setTimeout(() => {
+        setStripTransition("none");
+        animatingRef.current = false;
+        if (delta !== 0) setAnchor((a) => addDays(a, delta * daysPerPage));
+        else setStripTransform(-pageWidth);
+      }, SWIPE_MS + 20);
+    };
+
+    root.addEventListener("touchstart", onStart, { passive: true });
+    root.addEventListener("touchmove", onMove, { passive: false });
+    root.addEventListener("touchend", onEnd, { passive: true });
+    root.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      root.removeEventListener("touchstart", onStart);
+      root.removeEventListener("touchmove", onMove);
+      root.removeEventListener("touchend", onEnd);
+      root.removeEventListener("touchcancel", onEnd);
+    };
+  }, [paging, pageWidth, daysPerPage]);
 
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
@@ -448,6 +565,10 @@ export default function WeekCalendar({
   }
 
   function onEntryPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    // On phones a touch over a block pans/pages the grid — the swipe gesture
+    // owns it. Moving/resizing a block stays a pointer-device (mouse/pen)
+    // affordance; tapping still opens the editor.
+    if (e.pointerType === "touch") return;
     const d = dragRef.current;
     if (!d || !colsRef.current) return;
     if (!d.moved) {
@@ -552,6 +673,12 @@ export default function WeekCalendar({
       });
   }
 
+  function onEntryPointerCancel() {
+    dragRef.current = null;
+    dragStateRef.current = null;
+    setDrag(null);
+  }
+
   // ----- create -----
 
   function openCreateAt(day: Date, minutes: number) {
@@ -579,6 +706,9 @@ export default function WeekCalendar({
   }
 
   function onSlotPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    // On phones the grid pages/scrolls under a touch; drag-to-create is a
+    // pointer-device affordance (tap still creates at that slot).
+    if (e.pointerType === "touch") return;
     const d = createDragRef.current;
     if (!d || !colsRef.current) return;
     if (!d.moved) {
@@ -647,14 +777,14 @@ export default function WeekCalendar({
       view === "month"
         ? current.getMonth() === anchor.getMonth() &&
           current.getFullYear() === anchor.getFullYear()
-        : days.some((d) => isSameDay(d, current));
+        : visibleDays.some((d) => isSameDay(d, current));
     if (inView && view !== "month") {
       const next = new Date(current);
       const m = current.getMinutes();
       next.setMinutes(m % 30 === 0 ? m : m + (30 - (m % 30)), 0, 0);
       return next;
     }
-    const base = view === "month" ? startOfMonth(anchor) : days[0];
+    const base = view === "month" ? startOfMonth(anchor) : visibleDays[0];
     return addMinutes(startOfDay(base), 9 * 60);
   }
 
@@ -803,22 +933,14 @@ export default function WeekCalendar({
 
   const stepDays = view === "day" ? 1 : view === "3day" ? 3 : 7;
 
-  /** On phones the arrows scroll the grid; the settle handler moves the anchor. */
-  function scrollPages(dir: -1 | 1): boolean {
-    const el = scrollRef.current;
-    if (!paging || !el || !pageWidth) return false;
-    el.scrollBy({ left: dir * pageWidth, behavior: "smooth" });
-    return true;
-  }
-
   function goPrev() {
-    if (scrollPages(-1)) return;
+    if (animateToPage(-1)) return;
     setAnchor((a) =>
       view === "month" ? addMonths(a, -1) : addDays(a, -stepDays),
     );
   }
   function goNext() {
-    if (scrollPages(1)) return;
+    if (animateToPage(1)) return;
     setAnchor((a) =>
       view === "month" ? addMonths(a, 1) : addDays(a, stepDays),
     );
@@ -856,12 +978,181 @@ export default function WeekCalendar({
         : dateRangeLabel(visibleDays[0], visibleDays[visibleDays.length - 1]);
 
   const headerButton =
-    "rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-100 sm:p-2";
+    "rounded-lg p-2.5 text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-100 sm:p-2";
 
   // While paging each column is exactly one page-slice wide; otherwise the
   // columns share the row as before.
   const dayColStyle = paging && dayWidth ? { width: dayWidth } : undefined;
   const dayColClass = paging && dayWidth ? "shrink-0" : "flex-1 basis-0";
+
+  // ----- shared grid pieces (used by both the desktop grid and the phone pager) -----
+
+  const dayHeaderCell = (day: Date, i: number) => {
+    const isToday = isSameDay(day, now);
+    return (
+      <div
+        key={i}
+        style={dayColStyle}
+        className={`flex items-center justify-center gap-1.5 border-l border-neutral-800/40 py-2.5 text-sm ${dayColClass}`}
+      >
+        <span className={isToday ? "text-neutral-100" : "text-neutral-500"}>
+          {WEEKDAYS_SHORT[(day.getDay() + 6) % 7]}
+        </span>
+        <span
+          className={
+            isToday
+              ? "flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs font-semibold text-white"
+              : "text-neutral-300"
+          }
+        >
+          {day.getDate()}
+        </span>
+        <JournalDayMarker entry={journalByDate.get(toDateKey(day))} />
+      </div>
+    );
+  };
+
+  const allDayBarEls = allDay.bars.map((bar) => {
+    const category = bar.entry.category_id
+      ? categoryById.get(bar.entry.category_id)
+      : undefined;
+    const pal = blockPalette(category?.color ?? NEUTRAL);
+    const past = isFinished(bar.entry, now);
+    return (
+      <div
+        key={bar.entry.id}
+        onClick={() =>
+          setModal({
+            mode: "edit",
+            entryId: bar.entry.id,
+            initial: editInitial(bar.entry),
+          })
+        }
+        className={`absolute flex cursor-pointer items-center overflow-hidden rounded-md border px-2 text-[11px] leading-none transition-[filter] hover:brightness-110 ${past ? "opacity-60" : ""}`}
+        style={{
+          top: bar.row * (ALLDAY_BAR_H + ALLDAY_BAR_GAP) + ALLDAY_BAR_GAP,
+          height: ALLDAY_BAR_H,
+          left: `calc(${(bar.firstCol / days.length) * 100}% + 2px)`,
+          width: `calc(${((bar.lastCol - bar.firstCol + 1) / days.length) * 100}% - 4px)`,
+          backgroundColor: pal.bg,
+          color: pal.title,
+          borderColor:
+            bar.entry.type === "goal"
+              ? goalFrame(category?.color ?? NEUTRAL)
+              : "rgba(0,0,0,0.2)",
+          borderWidth: bar.entry.type === "goal" ? 2 : 1,
+          borderTopLeftRadius: bar.continuesLeft ? 0 : undefined,
+          borderBottomLeftRadius: bar.continuesLeft ? 0 : undefined,
+          borderTopRightRadius: bar.continuesRight ? 0 : undefined,
+          borderBottomRightRadius: bar.continuesRight ? 0 : undefined,
+        }}
+      >
+        <span className="truncate font-medium">{bar.entry.title}</span>
+      </div>
+    );
+  });
+
+  const allDayHeight =
+    allDay.rows * (ALLDAY_BAR_H + ALLDAY_BAR_GAP) + ALLDAY_BAR_GAP;
+
+  const slotLines = Array.from({ length: 48 }, (_, i) => (
+    <div
+      key={i}
+      className={`pointer-events-none absolute inset-x-0 ${
+        i % 2 === 0
+          ? "border-t border-neutral-800/60"
+          : "border-t border-dashed border-neutral-800/35"
+      }`}
+      style={{ top: i * SLOT_PX }}
+    />
+  ));
+
+  const dayBodyColumn = (day: Date, di: number) => (
+    <div
+      key={di}
+      className={`relative border-l border-neutral-800/40 ${dayColClass}`}
+      style={{ height: GRID_HEIGHT, ...dayColStyle }}
+    >
+      {Array.from({ length: 48 }, (_, s) => (
+        <button
+          key={s}
+          onPointerDown={(e) => onSlotPointerDown(e, di, s)}
+          onPointerMove={onSlotPointerMove}
+          onPointerUp={(e) => onSlotPointerUp(e, di, s)}
+          onPointerCancel={onSlotPointerCancel}
+          className="group absolute inset-x-0 z-[1] flex items-center justify-center transition-colors hover:bg-neutral-800/25"
+          style={{ top: s * SLOT_PX, height: SLOT_PX }}
+          aria-label="Add event"
+        >
+          <Plus className="h-3 w-3 text-neutral-500 opacity-0 transition-opacity group-hover:opacity-100" />
+        </button>
+      ))}
+      {entriesByDay[di].map((item) => (
+        <EntryBlock
+          key={item.entry.id}
+          item={item}
+          category={
+            item.entry.category_id
+              ? categoryById.get(item.entry.category_id)
+              : undefined
+          }
+          slotPx={SLOT_PX}
+          now={now}
+          dimmed={drag?.entryId === item.entry.id}
+          onPointerDown={(e) => onEntryPointerDown(e, item, di)}
+          onPointerMove={onEntryPointerMove}
+          onPointerUp={onEntryPointerUp}
+          onPointerCancel={onEntryPointerCancel}
+          onResizePointerDown={(e, edge) => onEntryResizeDown(e, item, di, edge)}
+        />
+      ))}
+      {drag && drag.day === di && (
+        <GhostBlock
+          startMin={drag.startMin}
+          durationMin={drag.durationMin}
+          label={drag.title}
+        />
+      )}
+      {dragTask && dropPreview && dropPreview.day === di && (
+        <GhostBlock
+          startMin={dropPreview.startMin}
+          durationMin={TASK_DROP_DURATION}
+          label={dragTask.title}
+        />
+      )}
+      {createDrag && createDrag.day === di && (
+        <GhostBlock
+          startMin={createDrag.startMin}
+          durationMin={createDrag.endMin - createDrag.startMin}
+          label="New event"
+        />
+      )}
+      {isSameDay(day, now) && (
+        <div
+          className="pointer-events-none absolute inset-x-0 z-10"
+          style={{ top: (minutesSinceMidnight(now) / 30) * SLOT_PX }}
+        >
+          <div className="relative border-t-2 border-accent">
+            <span className="absolute -top-[5px] left-0 h-2 w-2 rounded-full bg-accent" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const hourGutter = (
+    <>
+      {Array.from({ length: 23 }, (_, i) => i + 1).map((h) => (
+        <span
+          key={h}
+          className="absolute right-2 -translate-y-1/2 text-[11px] text-neutral-600"
+          style={{ top: h * HOUR_PX }}
+        >
+          {String(h).padStart(2, "0")}:00
+        </span>
+      ))}
+    </>
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -890,8 +1181,8 @@ export default function WeekCalendar({
                   onClick={() => setView(option.key)}
                   className={`${visibility}${
                     view === option.key
-                      ? "rounded-md bg-neutral-800 px-2.5 py-1 font-medium text-neutral-100"
-                      : "rounded-md px-2.5 py-1 text-neutral-400 transition-colors hover:text-neutral-200"
+                      ? "rounded-md bg-neutral-800 px-3 py-1.5 font-medium text-neutral-100 sm:px-2.5 sm:py-1"
+                      : "rounded-md px-3 py-1.5 text-neutral-400 transition-colors hover:text-neutral-200 sm:px-2.5 sm:py-1"
                   }`}
                 >
                   {option.label}
@@ -903,15 +1194,15 @@ export default function WeekCalendar({
           <button
             onClick={goToday}
             title="Today (T)"
-            className="rounded-lg px-2 py-1.5 text-sm text-neutral-300 transition-colors hover:bg-neutral-900 hover:text-neutral-100 sm:px-3"
+            className="rounded-lg px-3 py-2 text-sm text-neutral-300 transition-colors hover:bg-neutral-900 hover:text-neutral-100 sm:py-1.5"
           >
             Today
           </button>
           <button onClick={goPrev} className={headerButton} aria-label="Previous">
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-5 w-5 sm:h-4 sm:w-4" />
           </button>
           <button onClick={goNext} className={headerButton} aria-label="Next">
-            <ChevronRight className="h-4 w-4" />
+            <ChevronRight className="h-5 w-5 sm:h-4 sm:w-4" />
           </button>
           <button
             onClick={() =>
@@ -921,9 +1212,9 @@ export default function WeekCalendar({
               })
             }
             title="New entry (N)"
-            className="flex items-center gap-1.5 rounded-lg bg-accent px-2.5 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90 sm:ml-1 sm:px-3"
+            className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 sm:ml-1 sm:py-1.5"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-5 w-5 sm:h-4 sm:w-4" />
             <span className="hidden sm:inline">New</span>
           </button>
           {/* hidden on phones: dragging from the sidebar needs a mouse */}
@@ -986,61 +1277,81 @@ export default function WeekCalendar({
                 });
             }}
           />
-        ) : (
+        ) : paging ? (
+          // ---- phone pager: fixed header band + vertical-only scrolling body,
+          // with day columns/labels driven horizontally by the swipe gesture ----
           <div
-            ref={scrollRef}
-            className={`min-w-0 flex-1 overflow-auto ${
-              paging
-                ? // native paging: snap a page at a time, keep the gutter clear
-                  // of the snap position, and don't trigger browser back-swipe
-                  "snap-x snap-mandatory scroll-pl-14 overscroll-x-contain"
-                : ""
-            }`}
+            ref={mobileRootRef}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            style={{ touchAction: "pan-y" }}
           >
-            {/* While paging, the window is sized so one page fills the port
-                exactly; otherwise the wider desktop views keep a minimum. */}
+            <div className="shrink-0 border-b border-neutral-800/80 bg-neutral-950/80 backdrop-blur">
+              <div className="flex">
+                <div className="w-14 shrink-0" />
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <div
+                    ref={headerStripRef}
+                    className="flex will-change-transform"
+                    style={{ width: stripWidth || undefined }}
+                  >
+                    {days.map(dayHeaderCell)}
+                  </div>
+                </div>
+              </div>
+
+              {allDay.rows > 0 && (
+                <div className="flex border-t border-neutral-800/60">
+                  <div className="flex w-14 shrink-0 items-start justify-end pr-2 pt-1.5 text-[10px] uppercase tracking-wide text-neutral-600">
+                    all day
+                  </div>
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <div
+                      ref={allDayStripRef}
+                      className="relative will-change-transform"
+                      style={{ height: allDayHeight, width: stripWidth || undefined }}
+                    >
+                      {allDayBarEls}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div
-              ref={gridInnerRef}
-              style={
-                paging && dayWidth
-                  ? { width: GUTTER_PX + dayWidth * days.length }
-                  : {
-                      minWidth:
-                        view === "day" ? 360 : view === "3day" ? 540 : 640,
-                    }
-              }
+              ref={scrollRef}
+              className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
+            >
+              <div className="flex">
+                <div
+                  className="w-14 shrink-0 bg-neutral-950"
+                  style={{ height: GRID_HEIGHT }}
+                >
+                  {hourGutter}
+                </div>
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <div
+                    ref={bodyStripRef}
+                    className="relative flex will-change-transform"
+                    style={{ width: stripWidth || undefined, height: GRID_HEIGHT }}
+                  >
+                    {slotLines}
+                    {days.map(dayBodyColumn)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div ref={scrollRef} className="min-w-0 flex-1 overflow-auto">
+            <div
+              style={{
+                minWidth: view === "day" ? 360 : view === "3day" ? 540 : 640,
+              }}
             >
               <div className="sticky top-0 z-20 border-b border-neutral-800/80 bg-neutral-950/80 backdrop-blur">
                 <div className="flex">
-                <div className="sticky left-0 z-10 w-14 shrink-0 bg-neutral-950/95 backdrop-blur" />
-                {days.map((day, i) => {
-                  const isToday = isSameDay(day, now);
-                  return (
-                    <div
-                      key={i}
-                      style={dayColStyle}
-                      className={`flex items-center justify-center gap-1.5 border-l border-neutral-800/40 py-2.5 text-sm ${dayColClass} ${
-                        paging && i % daysPerPage === 0 ? "snap-start" : ""
-                      }`}
-                    >
-                      <span
-                        className={isToday ? "text-neutral-100" : "text-neutral-500"}
-                      >
-                        {WEEKDAYS_SHORT[(day.getDay() + 6) % 7]}
-                      </span>
-                      <span
-                        className={
-                          isToday
-                            ? "flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs font-semibold text-white"
-                            : "text-neutral-300"
-                        }
-                      >
-                        {day.getDate()}
-                      </span>
-                      <JournalDayMarker entry={journalByDate.get(toDateKey(day))} />
-                    </div>
-                  );
-                })}
+                  <div className="sticky left-0 z-10 w-14 shrink-0 bg-neutral-950/95 backdrop-blur" />
+                  {days.map(dayHeaderCell)}
                 </div>
 
                 {allDay.rows > 0 && (
@@ -1048,63 +1359,8 @@ export default function WeekCalendar({
                     <div className="sticky left-0 z-10 flex w-14 shrink-0 items-start justify-end bg-neutral-950/95 pr-2 pt-1.5 text-[10px] uppercase tracking-wide text-neutral-600 backdrop-blur">
                       all day
                     </div>
-                    <div
-                      className="relative flex-1"
-                      style={{
-                        height:
-                          allDay.rows * (ALLDAY_BAR_H + ALLDAY_BAR_GAP) +
-                          ALLDAY_BAR_GAP,
-                      }}
-                    >
-                      {allDay.bars.map((bar) => {
-                        const category = bar.entry.category_id
-                          ? categoryById.get(bar.entry.category_id)
-                          : undefined;
-                        const pal = blockPalette(category?.color ?? NEUTRAL);
-                        const past = isFinished(bar.entry, now);
-                        return (
-                          <div
-                            key={bar.entry.id}
-                            onClick={() =>
-                              setModal({
-                                mode: "edit",
-                                entryId: bar.entry.id,
-                                initial: editInitial(bar.entry),
-                              })
-                            }
-                            className={`absolute flex cursor-pointer items-center overflow-hidden rounded-md border px-2 text-[11px] leading-none transition-[filter] hover:brightness-110 ${past ? "opacity-60" : ""}`}
-                            style={{
-                              top:
-                                bar.row * (ALLDAY_BAR_H + ALLDAY_BAR_GAP) +
-                                ALLDAY_BAR_GAP,
-                              height: ALLDAY_BAR_H,
-                              left: `calc(${(bar.firstCol / days.length) * 100}% + 2px)`,
-                              width: `calc(${((bar.lastCol - bar.firstCol + 1) / days.length) * 100}% - 4px)`,
-                              backgroundColor: pal.bg,
-                              color: pal.title,
-                              borderColor:
-                                bar.entry.type === "goal"
-                                  ? goalFrame(category?.color ?? NEUTRAL)
-                                  : "rgba(0,0,0,0.2)",
-                              borderWidth: bar.entry.type === "goal" ? 2 : 1,
-                              borderTopLeftRadius: bar.continuesLeft ? 0 : undefined,
-                              borderBottomLeftRadius: bar.continuesLeft
-                                ? 0
-                                : undefined,
-                              borderTopRightRadius: bar.continuesRight
-                                ? 0
-                                : undefined,
-                              borderBottomRightRadius: bar.continuesRight
-                                ? 0
-                                : undefined,
-                            }}
-                          >
-                            <span className="truncate font-medium">
-                              {bar.entry.title}
-                            </span>
-                          </div>
-                        );
-                      })}
+                    <div className="relative flex-1" style={{ height: allDayHeight }}>
+                      {allDayBarEls}
                     </div>
                   </div>
                 )}
@@ -1115,15 +1371,7 @@ export default function WeekCalendar({
                   className="sticky left-0 z-10 w-14 shrink-0 bg-neutral-950"
                   style={{ height: GRID_HEIGHT }}
                 >
-                  {Array.from({ length: 23 }, (_, i) => i + 1).map((h) => (
-                    <span
-                      key={h}
-                      className="absolute right-2 -translate-y-1/2 text-[11px] text-neutral-600"
-                      style={{ top: h * HOUR_PX }}
-                    >
-                      {String(h).padStart(2, "0")}:00
-                    </span>
-                  ))}
+                  {hourGutter}
                 </div>
 
                 <div
@@ -1132,94 +1380,8 @@ export default function WeekCalendar({
                   onDragOver={onGridDragOver}
                   onDrop={onGridDrop}
                 >
-                  {Array.from({ length: 48 }, (_, i) => (
-                    <div
-                      key={i}
-                      className={`pointer-events-none absolute inset-x-0 ${
-                        i % 2 === 0
-                          ? "border-t border-neutral-800/60"
-                          : "border-t border-dashed border-neutral-800/35"
-                      }`}
-                      style={{ top: i * SLOT_PX }}
-                    />
-                  ))}
-                  {days.map((day, di) => (
-                    <div
-                      key={di}
-                      className={`relative border-l border-neutral-800/40 ${dayColClass} ${
-                        paging && di % daysPerPage === 0 ? "snap-start" : ""
-                      }`}
-                      style={{ height: GRID_HEIGHT, ...dayColStyle }}
-                    >
-                      {Array.from({ length: 48 }, (_, s) => (
-                        <button
-                          key={s}
-                          onPointerDown={(e) => onSlotPointerDown(e, di, s)}
-                          onPointerMove={onSlotPointerMove}
-                          onPointerUp={(e) => onSlotPointerUp(e, di, s)}
-                          onPointerCancel={onSlotPointerCancel}
-                          className="group absolute inset-x-0 z-[1] flex items-center justify-center transition-colors hover:bg-neutral-800/25"
-                          style={{ top: s * SLOT_PX, height: SLOT_PX }}
-                          aria-label="Add event"
-                        >
-                          <Plus className="h-3 w-3 text-neutral-500 opacity-0 transition-opacity group-hover:opacity-100" />
-                        </button>
-                      ))}
-                      {entriesByDay[di].map((item) => (
-                        <EntryBlock
-                          key={item.entry.id}
-                          item={item}
-                          category={
-                            item.entry.category_id
-                              ? categoryById.get(item.entry.category_id)
-                              : undefined
-                          }
-                          slotPx={SLOT_PX}
-                          now={now}
-                          dimmed={drag?.entryId === item.entry.id}
-                          onPointerDown={(e) => onEntryPointerDown(e, item, di)}
-                          onPointerMove={onEntryPointerMove}
-                          onPointerUp={onEntryPointerUp}
-                          onResizePointerDown={(e, edge) =>
-                            onEntryResizeDown(e, item, di, edge)
-                          }
-                        />
-                      ))}
-                      {drag && drag.day === di && (
-                        <GhostBlock
-                          startMin={drag.startMin}
-                          durationMin={drag.durationMin}
-                          label={drag.title}
-                        />
-                      )}
-                      {dragTask && dropPreview && dropPreview.day === di && (
-                        <GhostBlock
-                          startMin={dropPreview.startMin}
-                          durationMin={TASK_DROP_DURATION}
-                          label={dragTask.title}
-                        />
-                      )}
-                      {createDrag && createDrag.day === di && (
-                        <GhostBlock
-                          startMin={createDrag.startMin}
-                          durationMin={createDrag.endMin - createDrag.startMin}
-                          label="New event"
-                        />
-                      )}
-                      {isSameDay(day, now) && (
-                        <div
-                          className="pointer-events-none absolute inset-x-0 z-10"
-                          style={{
-                            top: (minutesSinceMidnight(now) / 30) * SLOT_PX,
-                          }}
-                        >
-                          <div className="relative border-t-2 border-accent">
-                            <span className="absolute -top-[5px] left-0 h-2 w-2 rounded-full bg-accent" />
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                  {slotLines}
+                  {days.map(dayBodyColumn)}
                 </div>
               </div>
             </div>
