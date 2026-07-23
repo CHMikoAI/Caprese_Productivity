@@ -5,7 +5,7 @@
 // installable and to show a friendly page instead of the browser's error
 // screen when the network is gone.
 
-const CACHE = "caprese-shell-v1";
+const CACHE = "caprese-shell-v2";
 const OFFLINE_URL = "/offline";
 const SHELL = [OFFLINE_URL, "/icons/icon-192.png", "/icons/apple-touch-icon.png"];
 
