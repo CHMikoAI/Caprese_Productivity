@@ -83,19 +83,12 @@
   color-scheme: dark;
 }
 
-html {
+html,
+body {
   height: 100%;
 }
 
 body {
-  /* Fixed app-shell height: the document itself never scrolls — the main
-     column and inner areas (the calendar grid, lists) scroll instead. This
-     keeps the mobile browser's dynamic toolbar from toggling, which is what
-     made the fixed bottom tab bar jump. `dvh` tracks the toolbar; the `vh`
-     line above is the fallback for browsers without it. */
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
   background-color: var(--color-neutral-950);
   color: var(--color-neutral-200);
   /* Installed on iOS the page draws edge to edge (viewport-fit=cover), so keep

@@ -52,7 +52,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="h-full antialiased">
-      <body className="flex flex-col font-sans">
+      <body className="flex min-h-full flex-col font-sans">
         {children}
         <ServiceWorker />
       </body>
