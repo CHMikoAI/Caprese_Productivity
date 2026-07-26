@@ -26,10 +26,17 @@ export default function BottomNav({
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-800/80 bg-neutral-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-800/80 bg-neutral-950/95 backdrop-blur sm:hidden"
+      // Sit the icons close to the bottom: reserve less than the full
+      // home-indicator inset so there's only a slim clearance below the labels
+      // (still enough that the indicator bar never crosses them), not the full
+      // ~34px "dead" strip iOS reserves by default.
+      style={{
+        paddingBottom: "max(0.375rem, calc(env(safe-area-inset-bottom) - 1rem))",
+      }}
       aria-label="Primary"
     >
-      <div className="flex h-12 items-stretch">
+      <div className="flex h-11 items-stretch">
         {TABS.map(({ href, label, Icon }) => {
           const active = pathname.startsWith(href);
           return (

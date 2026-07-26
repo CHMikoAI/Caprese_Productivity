@@ -1,6 +1,5 @@
 import BottomNav from "@/components/BottomNav";
 import GlobalShortcuts from "@/components/GlobalShortcuts";
-import LayoutDebug from "@/components/LayoutDebug";
 import TopNav from "@/components/TopNav";
 import { artSources } from "@/lib/pantryArt";
 import { getSupabase } from "@/lib/supabase";
@@ -40,7 +39,6 @@ export default async function AppLayout({
         {children}
       </main>
       <BottomNav pantryPicks={picks} />
-      <LayoutDebug />
       <GlobalShortcuts />
     </>
   );
