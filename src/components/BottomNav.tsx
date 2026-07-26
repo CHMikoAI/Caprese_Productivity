@@ -27,12 +27,11 @@ export default function BottomNav({
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-800/80 bg-neutral-950/95 backdrop-blur sm:hidden"
-      // Sit the icons close to the bottom: reserve less than the full
+      // Sit the icons right down at the bottom: reserve well under the full
       // home-indicator inset so there's only a slim clearance below the labels
-      // (still enough that the indicator bar never crosses them), not the full
-      // ~34px "dead" strip iOS reserves by default.
+      // (~10px on iPhone), not the full ~34px "dead" strip iOS reserves.
       style={{
-        paddingBottom: "max(0.375rem, calc(env(safe-area-inset-bottom) - 1rem))",
+        paddingBottom: "max(0.25rem, calc(env(safe-area-inset-bottom) - 1.5rem))",
       }}
       aria-label="Primary"
     >
