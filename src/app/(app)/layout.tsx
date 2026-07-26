@@ -1,6 +1,5 @@
 import BottomNav from "@/components/BottomNav";
 import GlobalShortcuts from "@/components/GlobalShortcuts";
-import LayoutDebug from "@/components/LayoutDebug";
 import TopNav from "@/components/TopNav";
 import { artSources } from "@/lib/pantryArt";
 import { getSupabase } from "@/lib/supabase";
@@ -32,15 +31,14 @@ export default async function AppLayout({
         saladsReady={saladsReady}
         saladArt={artSources().salad}
       />
-      {/* The shell is a fixed-height flex column (see globals.css): `main`
-          scrolls, the bottom tab bar sits in normal flow beneath it. In an iOS
-          PWA that pins the bar to the true screen bottom — `position: fixed`
-          there leaves a black gap the height of a phantom Safari toolbar. */}
-      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* The bottom tab bar is `position: fixed` at the viewport bottom — that
+          pins it to the true screen edge in an iOS PWA and its background fills
+          the home-indicator zone (no dead black strip). Reserve its height
+          (3rem) plus that inset so content isn't hidden behind it. */}
+      <main className="flex min-h-0 flex-1 flex-col pb-[calc(3rem+env(safe-area-inset-bottom))] sm:pb-0">
         {children}
       </main>
       <BottomNav pantryPicks={picks} />
-      <LayoutDebug />
       <GlobalShortcuts />
     </>
   );
