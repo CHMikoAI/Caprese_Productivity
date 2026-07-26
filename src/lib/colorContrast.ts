@@ -47,6 +47,12 @@ export function goalFrame(hex: string): string {
   return `rgb(${lift(r)}, ${lift(g)}, ${lift(b)})`;
 }
 
+/** The project colour as an `rgba()` string at the given alpha — for subtle tints. */
+export function withAlpha(hex: string, alpha: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export function blockPalette(hex: string, alpha = 0.66): BlockPalette {
   const [r, g, b] = hexToRgb(hex);
   const effective: [number, number, number] = [

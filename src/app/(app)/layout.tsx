@@ -1,4 +1,5 @@
 import BottomNav from "@/components/BottomNav";
+import CaptureFab from "@/components/thoughts/CaptureFab";
 import GlobalShortcuts from "@/components/GlobalShortcuts";
 import TopNav from "@/components/TopNav";
 import { artSources } from "@/lib/pantryArt";
@@ -38,7 +39,8 @@ export default async function AppLayout({
       <main className="flex min-h-0 flex-1 flex-col pb-[calc(3rem+env(safe-area-inset-bottom))] sm:pb-0">
         {children}
       </main>
-      <BottomNav pantryPicks={picks} />
+      <BottomNav />
+      <CaptureFab />
       <GlobalShortcuts />
     </>
   );

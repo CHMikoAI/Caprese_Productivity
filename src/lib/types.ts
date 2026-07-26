@@ -50,6 +50,23 @@ export type JournalEntry = {
   content: string;
 };
 
+// A captured thought — a voice note (transcribed) or typed text. It lives in the
+// "Open" inbox until triaged; triaging tags it to a project (for filtering) or
+// just marks it done. A thought never leaves the full list once captured.
+export const THOUGHT_SOURCES = ["voice", "text"] as const;
+export type ThoughtSource = (typeof THOUGHT_SOURCES)[number];
+
+export type Thought = {
+  id: string;
+  content: string; // rich text stored as sanitized HTML
+  source: ThoughtSource; // how it was captured — no longer surfaced in the UI
+  linked_project_id: string | null; // -> categories.id; presence = "sorted"
+  triaged: boolean; // kept in sync with having a project
+  archived_at: string | null; // set once completed (moved to the archive)
+  created_at: string;
+  updated_at: string; // bumps only on content edits
+};
+
 // 12 project colors — muted, modern jewel tones (not neon). Mostly spread
 // around the hue wheel, but brown and grey are deliberately desaturated
 // outliers rather than just another hue step: they read as clearly distinct

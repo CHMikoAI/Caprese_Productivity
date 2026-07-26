@@ -50,6 +50,27 @@ create table if not exists journal_entries (
   created_at timestamptz not null default now()
 );
 
+-- Thoughts: a fast capture inbox for spontaneous ideas, captured from any device
+-- as a voice note (transcribed via Whisper) or typed text. All captures land
+-- here `triaged = false` (the "Open" inbox). Triage = tagging a thought to a
+-- project (categories) purely for filtering, or marking it done — either way the
+-- thought stays forever in the full list. updated_at bumps only on content edits
+-- (voice transcripts are often imprecise and get refined later).
+create table if not exists thoughts (
+  id uuid primary key default gen_random_uuid(),
+  content text not null,               -- rich text stored as sanitized HTML
+  source text not null check (source in ('voice', 'text')),  -- capture method (not shown)
+  linked_project_id uuid references categories(id) on delete set null,
+  triaged boolean not null default false,  -- kept in sync with "has a project"
+  archived_at timestamptz,             -- set once completed; hidden in the archive
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists thoughts_triaged_idx on thoughts (triaged);
+create index if not exists thoughts_archived_at_idx on thoughts (archived_at);
+create index if not exists thoughts_created_at_idx on thoughts (created_at desc);
+
 -- ---------------------------------------------------------------------------
 -- Pantry gamification: picks are earned via journal/tasks/goals, spent on
 -- card draws; drawn ingredients are crafted into caprese salads.
@@ -178,6 +199,7 @@ $$;
 alter table categories enable row level security;
 alter table entries enable row level security;
 alter table journal_entries enable row level security;
+alter table thoughts enable row level security;
 alter table salads enable row level security;
 alter table reward_grants enable row level security;
 alter table card_draws enable row level security;

@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookText, CalendarDays, FolderKanban, Salad } from "lucide-react";
+import { BookText, CalendarDays, FolderKanban, Lightbulb } from "lucide-react";
 
 const TABS = [
   { href: "/calendar", label: "Calendar", Icon: CalendarDays },
   { href: "/planner", label: "Planner", Icon: FolderKanban },
+  { href: "/thoughts", label: "Thoughts", Icon: Lightbulb },
   { href: "/journal", label: "Journal", Icon: BookText },
-  { href: "/pantry", label: "Pantry", Icon: Salad },
 ] as const;
 
 /**
@@ -16,12 +16,10 @@ const TABS = [
  * icon+label targets. Fixed to the viewport bottom so it's always flush against
  * the screen edge (`AppLayout` reserves matching bottom padding on `main`).
  * Desktop keeps the tabs in the top bar, so this is hidden from `sm` up.
+ * Pantry lives off the bottom bar on phones — it's reached via the salad icon
+ * in the top bar instead.
  */
-export default function BottomNav({
-  pantryPicks = 0,
-}: {
-  pantryPicks?: number;
-}) {
+export default function BottomNav() {
   const pathname = usePathname();
 
   return (
@@ -56,11 +54,6 @@ export default function BottomNav({
                   strokeWidth={active ? 2.4 : 2}
                   aria-hidden
                 />
-                {href === "/pantry" && pantryPicks > 0 && (
-                  <span className="absolute -right-2 -top-1.5 min-w-4 rounded-full bg-accent px-1 text-center text-[10px] font-semibold leading-4 text-white">
-                    {pantryPicks}
-                  </span>
-                )}
               </span>
               {label}
             </Link>

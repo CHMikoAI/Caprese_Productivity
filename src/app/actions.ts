@@ -17,6 +17,8 @@ import type {
   EntryType,
   JournalEntry,
   Pillar,
+  Thought,
+  ThoughtSource,
 } from "@/lib/types";
 
 function db() {
@@ -280,6 +282,87 @@ export async function deleteJournalEntry(id: string): Promise<void> {
   const { error } = await db().from("journal_entries").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/journal");
+}
+
+// ---------- thoughts ----------
+
+/** True when HTML carries no visible text (empty editor, stray <br>, etc.). */
+function htmlIsEmpty(html: string): boolean {
+  return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").trim() === "";
+}
+
+/** Capture a thought from any tab (the global FAB) — voice or typed text. */
+export async function createThought(
+  content: string,
+  source: ThoughtSource,
+): Promise<Thought> {
+  const clean = sanitizeHtml(content);
+  if (htmlIsEmpty(clean)) throw new Error("A thought needs some content.");
+  const { data, error } = await db()
+    .from("thoughts")
+    .insert({ content: clean, source })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/thoughts");
+  return data;
+}
+
+/**
+ * Edit a thought: fix its text (Whisper mishearing, added detail) and/or change
+ * its project in one go. A thought counts as "sorted" once it has a project, so
+ * `triaged` tracks that; an empty project puts it back in the Open inbox.
+ */
+export async function updateThought(
+  id: string,
+  content: string,
+  projectId: string | null,
+): Promise<Thought> {
+  const clean = sanitizeHtml(content);
+  if (htmlIsEmpty(clean)) throw new Error("A thought needs some content.");
+  const { data, error } = await db()
+    .from("thoughts")
+    .update({
+      content: clean,
+      linked_project_id: projectId,
+      triaged: projectId != null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/thoughts");
+  return data;
+}
+
+/**
+ * Quick-assign a thought to a project from the inbox (or clear it). Having a
+ * project is what makes a thought "sorted", so `triaged` mirrors that.
+ */
+export async function assignThoughtProject(
+  id: string,
+  projectId: string | null,
+): Promise<void> {
+  const { error } = await db()
+    .from("thoughts")
+    .update({ linked_project_id: projectId, triaged: projectId != null })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/thoughts");
+}
+
+/** Complete a thought (move it to the archive) or restore it from the archive. */
+export async function setThoughtArchived(
+  id: string,
+  archived: boolean,
+): Promise<void> {
+  const { error } = await db()
+    .from("thoughts")
+    .update({ archived_at: archived ? new Date().toISOString() : null })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/thoughts");
 }
 
 // ---------- pantry ----------
