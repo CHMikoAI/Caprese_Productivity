@@ -54,6 +54,31 @@ const TYPE_FILTERS: { key: TypeFilter; label: string }[] = [
   { key: "goal", label: "Goals" },
 ];
 
+// How far ahead "Upcoming" looks. A week keeps the list short and actionable;
+// widen it when you want the bigger picture. Rolling windows (not calendar
+// weeks/months) so the horizon never collapses to "almost nothing" on a Sunday.
+type Horizon = "week" | "month" | "year";
+
+const HORIZONS: { key: Horizon; label: string; noun: string }[] = [
+  { key: "week", label: "Week", noun: "week" },
+  { key: "month", label: "Month", noun: "month" },
+  { key: "year", label: "Year", noun: "year" },
+];
+
+const NEXT_HORIZON: Record<Horizon, Horizon | null> = {
+  week: "month",
+  month: "year",
+  year: null,
+};
+
+function horizonEnd(from: Date, horizon: Horizon): Date {
+  const d = new Date(from);
+  if (horizon === "week") d.setDate(d.getDate() + 7);
+  else if (horizon === "month") d.setMonth(d.getMonth() + 1);
+  else d.setFullYear(d.getFullYear() + 1);
+  return d;
+}
+
 /** A todo's deadline date, recovered from its next-midnight end_at. */
 function todoDeadline(entry: Entry): Date | null {
   return entry.end_at ? new Date(new Date(entry.end_at).getTime() - 1) : null;
@@ -98,6 +123,7 @@ export default function PlannerView({
   const [now, setNow] = useState(() => new Date());
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [horizon, setHorizon] = useState<Horizon>("week");
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [showEvents, setShowEvents] = useState(false);
   const [search, setSearch] = useState("");
@@ -208,8 +234,19 @@ export default function PlannerView({
       return a.created_at < b.created_at ? 1 : -1;
     });
     archive.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-    return { review, upcoming, toPlan, todos, archive };
-  }, [entries, now, typeFilter, projectFilter, showEvents, search]);
+
+    // Keep "Upcoming" to the chosen horizon; anything further out is counted
+    // separately so it can be revealed on demand instead of flooding the list.
+    const cutoff = horizonEnd(now, horizon).getTime();
+    const withinHorizon: Entry[] = [];
+    const later: Entry[] = [];
+    for (const e of upcoming) {
+      const start = e.start_at ? new Date(e.start_at).getTime() : 0;
+      (start <= cutoff ? withinHorizon : later).push(e);
+    }
+
+    return { review, upcoming: withinHorizon, later, toPlan, todos, archive };
+  }, [entries, now, typeFilter, projectFilter, showEvents, search, horizon]);
 
   // ----- mutations -----
 
@@ -545,15 +582,41 @@ export default function PlannerView({
     </Section>
   );
 
+  const horizonNoun =
+    HORIZONS.find((h) => h.key === horizon)?.noun ?? "week";
+  const nextHorizon = NEXT_HORIZON[horizon];
+
+  // Week / Month / Year — how far ahead Upcoming looks. Sits in the section
+  // header because it only scopes this list, not the whole planner.
+  const horizonToggle = (
+    <div className="flex shrink-0 rounded-lg border border-neutral-800 bg-neutral-900/60 p-0.5 text-[11px]">
+      {HORIZONS.map((h) => (
+        <button
+          key={h.key}
+          onClick={() => setHorizon(h.key)}
+          aria-pressed={horizon === h.key}
+          className={
+            horizon === h.key
+              ? "rounded-md bg-neutral-800 px-2 py-1 font-medium text-neutral-100"
+              : "rounded-md px-2 py-1 text-neutral-400 transition-colors hover:text-neutral-200"
+          }
+        >
+          {h.label}
+        </button>
+      ))}
+    </div>
+  );
+
   const upcomingSection = (
     <Section
       title="Upcoming"
       count={groups.upcoming.length}
       collapsed={collapsed.has("upcoming")}
       onToggle={() => toggleSection("upcoming")}
+      action={horizonToggle}
     >
       {groups.upcoming.length === 0 ? (
-        <EmptyHint text="Nothing scheduled yet." />
+        <EmptyHint text={`Nothing in the next ${horizonNoun}.`} />
       ) : (
         groups.upcoming.map((entry) => (
           <Row
@@ -567,6 +630,22 @@ export default function PlannerView({
           />
         ))
       )}
+      {groups.later.length > 0 &&
+        (nextHorizon ? (
+          <li>
+            <button
+              onClick={() => setHorizon(nextHorizon)}
+              className="w-full rounded-xl border border-dashed border-neutral-800 px-4 py-2.5 text-center text-xs text-neutral-500 transition-colors hover:border-neutral-700 hover:text-neutral-300"
+            >
+              +{groups.later.length} beyond this {horizonNoun} — show{" "}
+              {nextHorizon === "month" ? "the month" : "the year"}
+            </button>
+          </li>
+        ) : (
+          <li className="px-4 py-2 text-center text-xs text-neutral-600">
+            +{groups.later.length} more than a year out
+          </li>
+        ))}
     </Section>
   );
 
@@ -657,7 +736,8 @@ export default function PlannerView({
   );
 
   return (
-    <div className="w-full flex-1 px-4 py-8 sm:px-6">
+    // Centred like the other tabs; only the xl two-column board goes full-width.
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6 xl:max-w-none">
       {/* header */}
       <div className="flex items-center gap-2">
         <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
@@ -956,6 +1036,7 @@ function Section({
   collapsed,
   onToggle,
   beforeList,
+  action,
   children,
 }: {
   title: string;
@@ -965,27 +1046,33 @@ function Section({
   onToggle: () => void;
   /** Rendered between the header and the list (e.g. an inline add form). */
   beforeList?: React.ReactNode;
+  /** Controls pinned to the right of the header (kept outside the toggle). */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section className="mt-6">
-      {/* the whole header toggles the section (same pattern as Archive) */}
-      <button
-        onClick={onToggle}
-        aria-expanded={!collapsed}
-        className="flex w-full items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500 transition-colors hover:text-neutral-300"
-      >
-        <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`}
-        />
-        {title}
-        <span className="font-normal text-neutral-600">{count}</span>
-        {hint && !collapsed && (
-          <span className="ml-2 hidden font-normal normal-case tracking-normal text-neutral-600 sm:inline">
-            {hint}
-          </span>
-        )}
-      </button>
+      {/* the header toggles the section (same pattern as Archive); `action`
+          sits beside it so its controls stay clickable on their own */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500 transition-colors hover:text-neutral-300"
+        >
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`}
+          />
+          {title}
+          <span className="font-normal text-neutral-600">{count}</span>
+          {hint && !collapsed && (
+            <span className="ml-2 hidden font-normal normal-case tracking-normal text-neutral-600 sm:inline">
+              {hint}
+            </span>
+          )}
+        </button>
+        {action}
+      </div>
       {!collapsed && (
         <>
           {beforeList}
