@@ -36,7 +36,7 @@ export default async function AppLayout({
           pins it to the true screen edge in an iOS PWA and its background fills
           the home-indicator zone (no dead black strip). Reserve its height
           (3rem) plus that inset so content isn't hidden behind it. */}
-      <main className="flex min-h-0 flex-1 flex-col pb-[calc(3rem+env(safe-area-inset-bottom))] sm:pb-0">
+      <main className="flex min-h-0 flex-1 flex-col pb-[calc(3rem+env(safe-area-inset-bottom))] desk:pb-0">
         {children}
       </main>
       <BottomNav />

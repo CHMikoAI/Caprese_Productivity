@@ -15,7 +15,8 @@ const TABS = [
  * Phone-only primary navigation: a thumb-reachable bottom tab bar with big
  * icon+label targets. Fixed to the viewport bottom so it's always flush against
  * the screen edge (`AppLayout` reserves matching bottom padding on `main`).
- * Desktop keeps the tabs in the top bar, so this is hidden from `sm` up.
+ * Shown on every phone viewport — portrait *and* landscape (see the `phone`
+ * variant in globals.css); only real desktops move the tabs to the top bar.
  * Pantry lives off the bottom bar on phones — it's reached via the salad icon
  * in the top bar instead.
  */
@@ -24,7 +25,7 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-800/80 bg-neutral-950/95 backdrop-blur sm:hidden"
+      className="fixed inset-x-0 bottom-0 z-40 hidden border-t border-neutral-800/80 bg-neutral-950/95 backdrop-blur phone:block"
       // Sit the icons right down at the bottom: reserve well under the full
       // home-indicator inset so there's only a slim clearance below the labels
       // (~10px on iPhone), not the full ~34px "dead" strip iOS reserves.

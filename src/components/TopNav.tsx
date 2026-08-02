@@ -43,9 +43,10 @@ export default function TopNav({
           </span>
         </Link>
 
-        {/* Primary tabs live here on desktop; on phones they move to the bottom
-            tab bar, so this nav is hidden below `sm`. */}
-        <nav className="hidden min-w-0 flex-1 items-center gap-1 text-sm sm:flex">
+        {/* Primary tabs live here on desktop; on phones (portrait *and*
+            landscape) they move to the bottom tab bar, so this nav only shows
+            on real desktop viewports. */}
+        <nav className="hidden min-w-0 flex-1 items-center gap-1 text-sm desk:flex">
           {TABS.map((tab) => {
             const active = pathname.startsWith(tab.href);
             return (
@@ -74,7 +75,7 @@ export default function TopNav({
         <Link
           href="/pantry"
           title={`${saladsReady} ${saladsReady === 1 ? "salad" : "salads"} ready to redeem`}
-          className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900/60 py-1 pl-1 pr-2.5 transition-colors hover:border-neutral-600 sm:ml-0"
+          className="ml-auto flex shrink-0 items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900/60 py-1 pl-1 pr-2.5 transition-colors hover:border-neutral-600 desk:ml-0"
         >
           <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-[#F6F1E7]">
             <PantryArt

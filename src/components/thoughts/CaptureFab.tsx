@@ -297,7 +297,7 @@ export default function CaptureFab() {
       <button
         onClick={openCapture}
         aria-label="Capture a thought"
-        className="fixed right-4 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-lg shadow-black/40 transition-transform hover:scale-105 active:scale-95 sm:right-6 sm:bottom-6"
+        className="fixed right-4 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-30 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-white shadow-lg shadow-black/40 transition-transform hover:scale-105 active:scale-95 desk:right-6 desk:bottom-6"
       >
         <Lightbulb className="h-6 w-6" strokeWidth={2.2} aria-hidden />
       </button>
