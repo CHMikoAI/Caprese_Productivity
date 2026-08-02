@@ -24,7 +24,7 @@ export default function MonthView({
   categoryById,
   journalByDate,
   dragTask,
-  onCreateAt,
+  onOpenDay,
   onSelectEntry,
   onDropTaskOnDay,
 }: {
@@ -34,7 +34,8 @@ export default function MonthView({
   categoryById: Map<string, Category>;
   journalByDate: Map<string, JournalEntry>;
   dragTask: Entry | null;
-  onCreateAt: (day: Date) => void;
+  /** Tapping a day drills into it — the day view, anchored on that date. */
+  onOpenDay: (day: Date) => void;
   onSelectEntry: (entry: Entry) => void;
   onDropTaskOnDay: (day: Date) => void;
 }) {
@@ -103,7 +104,10 @@ export default function MonthView({
           return (
             <div
               key={key}
-              onClick={() => onCreateAt(day)}
+              onClick={() => onOpenDay(day)}
+              role="button"
+              aria-label={`Open ${day.getDate()}.${day.getMonth() + 1}.${day.getFullYear()}`}
+              title="Open this day"
               onDragOver={(e) => {
                 if (!dragTask) return;
                 e.preventDefault();

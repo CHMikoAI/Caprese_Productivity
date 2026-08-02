@@ -1266,16 +1266,13 @@ export default function WeekCalendar({
       categoryById={categoryById}
       journalByDate={journalByDate}
       dragTask={dragTask}
-      onCreateAt={(day) =>
-        setModal({
-          mode: "create",
-          initial: createInitial(
-            "event",
-            addMinutes(startOfDay(day), 9 * 60),
-            true,
-          ),
-        })
-      }
+      // Drill into a day: same gesture on phone and desktop. Creating an entry
+      // from the month grid now goes through that day view (or the New button),
+      // which keeps a tap unambiguous — especially next to the swipe pager.
+      onOpenDay={(day) => {
+        setAnchor(startOfDay(day));
+        setView("day");
+      }}
       onSelectEntry={(entry) =>
         setModal({ mode: "edit", entryId: entry.id, initial: editInitial(entry) })
       }
