@@ -26,12 +26,12 @@ export default function RewardToast({ reward }: { reward: Reward | null }) {
   return (
     <Link
       href="/pantry"
-      className="fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] animate-toast-in items-center gap-3 rounded-2xl border border-neutral-700 bg-neutral-900 py-3 pl-3 pr-4 shadow-2xl transition-colors hover:border-neutral-500"
+      className="fixed bottom-4 right-4 z-50 flex max-w-[calc(100vw-2rem)] animate-toast-in items-center gap-3 rounded-2xl bg-neutral-800 py-3 pl-3 pr-4 shadow-2xl transition-opacity active:opacity-70"
     >
       {/* tiny stack of face-down cards */}
       <span className="relative h-12 w-10 shrink-0">
-        <span className="absolute inset-0 -rotate-6 rounded-lg border border-neutral-700 bg-neutral-800" />
-        <span className="absolute inset-0 flex rotate-3 items-center justify-center rounded-lg border border-neutral-600 bg-neutral-800">
+        <span className="absolute inset-0 -rotate-6 rounded-lg bg-neutral-700" />
+        <span className="absolute inset-0 flex rotate-3 items-center justify-center rounded-lg bg-neutral-600">
           <Logo className="h-5 w-5" />
         </span>
       </span>

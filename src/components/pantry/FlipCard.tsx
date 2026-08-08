@@ -57,8 +57,8 @@ export default function FlipCard({
         }`}
       >
         {/* back */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl border border-neutral-700 bg-neutral-900 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,rgba(255,255,255,0.03)_10px,rgba(255,255,255,0.03)_20px)] shadow-lg [backface-visibility:hidden]">
-          <span className="flex h-14 w-14 items-center justify-center rounded-full border border-neutral-700/80 bg-neutral-950/60">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-2xl bg-neutral-800 bg-[repeating-linear-gradient(45deg,transparent,transparent_10px,rgba(255,255,255,0.03)_10px,rgba(255,255,255,0.03)_20px)] shadow-lg [backface-visibility:hidden]">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-950/50">
             <Logo className="h-8 w-8" />
           </span>
           <span className="text-[10px] font-semibold uppercase tracking-[0.25em] text-neutral-500">

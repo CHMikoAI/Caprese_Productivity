@@ -58,7 +58,7 @@ export default function GatePage() {
         <div className="absolute left-1/2 top-1/3 h-80 w-80 -translate-x-1/2 rounded-full bg-accent/10 blur-3xl" />
       </div>
 
-      <div className="relative w-full max-w-sm rounded-3xl border border-neutral-800 bg-neutral-900/60 p-8 shadow-2xl backdrop-blur">
+      <div className="relative w-full max-w-sm rounded-3xl bg-neutral-900 p-8 shadow-2xl">
         <div className="flex flex-col items-center text-center">
           {/* icon box with the Caprese logo */}
           <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-800/80 shadow-lg shadow-accent/20 ring-1 ring-white/10">

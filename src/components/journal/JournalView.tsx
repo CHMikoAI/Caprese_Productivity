@@ -164,40 +164,32 @@ export default function JournalView({
   const todayKey = toDateKey(new Date());
 
   return (
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6">
-      <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
-        Journal
-      </h1>
-      <p className="mt-1 text-sm text-neutral-500">
-        One sentence a day — what did you learn, where did you make progress?
-      </p>
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 sm:px-6">
+      <h1 className="title-lg">Journal</h1>
 
       {/* stats */}
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-4">
-          <div className="flex items-center gap-2 text-xs text-neutral-500">
+      <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <div className="card p-4">
+          <div className="flex items-center gap-1.5 section-label">
             <Flame className="h-3.5 w-3.5 text-accent" />
             Streak
           </div>
-          <p className="mt-2 text-xl font-semibold text-neutral-100">
+          <p className="mt-1.5 text-xl font-semibold tabular-nums text-neutral-50">
             {stats.streak} {stats.streak === 1 ? "day" : "days"}
           </p>
         </div>
         {PILLARS.map((p) => {
           const Icon = PILLAR_META[p].icon;
           return (
-            <div
-              key={p}
-              className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-4"
-            >
-              <div className="flex items-center gap-2 text-xs text-neutral-500">
+            <div key={p} className="card p-4">
+              <div className="flex items-center gap-1.5 section-label">
                 <Icon className="h-3.5 w-3.5" />
                 {PILLAR_META[p].label}
               </div>
-              <p className="mt-2 text-xl font-semibold text-neutral-100">
+              <p className="mt-1.5 text-xl font-semibold tabular-nums text-neutral-50">
                 {stats.total[p]}
               </p>
-              <p className="mt-0.5 text-xs text-neutral-600">
+              <p className="mt-0.5 text-xs text-neutral-500">
                 +{stats.month[p]} this month
               </p>
             </div>
@@ -206,12 +198,9 @@ export default function JournalView({
       </div>
 
       {/* composer */}
-      <form
-        onSubmit={save}
-        className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-900/50 p-5"
-      >
+      <form onSubmit={save} className="card mt-5 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-neutral-200">
+          <h2 className="text-base font-semibold text-neutral-50">
             {dateKey === todayKey ? "Today" : formatDayLong(fromDateKey(dateKey))}
           </h2>
           <div className="w-40">
@@ -234,7 +223,7 @@ export default function JournalView({
           }}
           placeholder="One sentence: what did you learn or improve?"
           rows={1}
-          className="mt-3 w-full resize-none overflow-y-auto rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-2.5 text-sm leading-relaxed text-neutral-100 placeholder:text-neutral-600 focus:border-accent focus:outline-none"
+          className="field mt-3 resize-none overflow-y-auto leading-relaxed"
         />
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {PILLARS.map((p) => {
@@ -245,11 +234,11 @@ export default function JournalView({
                 key={p}
                 type="button"
                 onClick={() => setPillar(p)}
-                className={
+                className={`flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-medium transition-colors ${
                   active
-                    ? "flex items-center gap-1.5 rounded-full border border-accent/60 bg-accent/10 px-3 py-1.5 text-xs font-medium text-neutral-50"
-                    : "flex items-center gap-1.5 rounded-full border border-neutral-700 px-3 py-1.5 text-xs text-neutral-400 transition-colors hover:border-neutral-500 hover:text-neutral-200"
-                }
+                    ? "bg-accent text-white"
+                    : "bg-neutral-800 text-neutral-300"
+                }`}
               >
                 <Icon className="h-3.5 w-3.5" />
                 {PILLAR_META[p].label}
@@ -259,7 +248,7 @@ export default function JournalView({
           <button
             type="submit"
             disabled={busy || !content.trim() || !pillar}
-            className="ml-auto rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="btn-primary ml-auto"
           >
             {entryForDate ? "Update" : "Save"}
           </button>
@@ -267,21 +256,19 @@ export default function JournalView({
       </form>
 
       {/* history */}
-      <div className="mt-8 flex flex-col gap-6 pb-8">
+      <div className="mt-7 flex flex-col gap-5 pb-8">
         {weekGroups.length === 0 && (
-          <p className="rounded-xl border border-dashed border-neutral-800 px-4 py-8 text-center text-sm text-neutral-600">
+          <p className="px-4 py-8 text-center text-sm text-neutral-500">
             No entries yet. Write your first sentence above.
           </p>
         )}
         {weekGroups.map((group) => (
           <section key={group.key}>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            <h3 className="section-label px-1">
               KW {group.kw}
-              <span className="ml-2 font-normal normal-case text-neutral-600">
-                {group.range}
-              </span>
+              <span className="ml-2 text-neutral-600">{group.range}</span>
             </h3>
-            <ul className="mt-2 flex flex-col gap-2 sm:gap-0">
+            <ul className="card mt-1.5 list-group overflow-hidden">
               {group.entries.map((entry) => {
                 const date = fromDateKey(entry.entry_date);
                 const Icon = PILLAR_META[entry.pillar].icon;
@@ -291,66 +278,36 @@ export default function JournalView({
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 };
                 return (
-                  <li key={entry.id}>
-                    {/* desktop: compact inline row, actions on hover */}
-                    <div className="group hidden items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-neutral-900/70 sm:flex">
-                      <span className="w-14 shrink-0 pt-0.5 text-xs text-neutral-500">
-                        {WEEKDAYS_SHORT[(date.getDay() + 6) % 7]} {date.getDate()}
-                      </span>
-                      <span title={label}>
-                        <Icon className="mt-0.5 h-4 w-4 shrink-0 text-neutral-500" />
-                      </span>
-                      <p className="min-w-0 flex-1 text-sm leading-relaxed text-neutral-200">
-                        {entry.content}
-                      </p>
-                      <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button
-                          onClick={openEdit}
-                          className="rounded-md p-1 text-neutral-600 hover:bg-neutral-800 hover:text-neutral-200"
-                          aria-label="Edit entry"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => remove(entry)}
-                          className="rounded-md p-1 text-neutral-600 hover:bg-neutral-800 hover:text-accent"
-                          aria-label="Delete entry"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* mobile: a card — full-width sentence, meta + always-on
-                        actions above it (there is no hover on touch) */}
-                    <div className="flex flex-col gap-2 rounded-xl border border-neutral-800/60 bg-neutral-900/40 px-3.5 py-3 sm:hidden">
-                      <div className="flex items-center gap-2 text-xs text-neutral-500">
-                        <Icon className="h-3.5 w-3.5 shrink-0" />
-                        <span>
-                          {WEEKDAYS_SHORT[(date.getDay() + 6) % 7]}{" "}
-                          {date.getDate()} · {label}
-                        </span>
-                        <div className="ml-auto flex gap-0.5">
-                          <button
-                            onClick={openEdit}
-                            className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
-                            aria-label="Edit entry"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => remove(entry)}
-                            className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-accent"
-                            aria-label="Delete entry"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                      <p className="text-sm leading-relaxed text-neutral-100">
-                        {entry.content}
-                      </p>
-                    </div>
+                  <li
+                    key={entry.id}
+                    className="group flex items-start gap-3 px-3.5 py-3"
+                  >
+                    <span
+                      title={label}
+                      className="flex w-16 shrink-0 items-center gap-1.5 pt-0.5 text-xs text-neutral-500"
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      {WEEKDAYS_SHORT[(date.getDay() + 6) % 7]} {date.getDate()}
+                    </span>
+                    <p className="min-w-0 flex-1 text-sm leading-relaxed text-neutral-100">
+                      {entry.content}
+                    </p>
+                    <span className="flex shrink-0 gap-0.5 transition-opacity desk:opacity-0 desk:group-hover:opacity-100">
+                      <button
+                        onClick={openEdit}
+                        className="p-1.5 text-neutral-600 transition-opacity active:opacity-50"
+                        aria-label="Edit entry"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => remove(entry)}
+                        className="p-1.5 text-neutral-600 transition-opacity active:opacity-50"
+                        aria-label="Delete entry"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </span>
                   </li>
                 );
               })}

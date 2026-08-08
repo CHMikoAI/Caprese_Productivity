@@ -72,7 +72,7 @@ function HelpOverlay({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="my-auto w-full max-w-lg rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl"
+        className="my-auto w-full max-w-lg animate-sheet-up rounded-2xl bg-neutral-900 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -101,7 +101,7 @@ function HelpOverlay({ onClose }: { onClose: () => void }) {
                     className="flex items-center justify-between gap-3 text-sm"
                   >
                     <span className="text-neutral-300">{label}</span>
-                    <kbd className="shrink-0 rounded-md border border-neutral-700 bg-neutral-800 px-1.5 py-0.5 text-[11px] font-medium text-neutral-200">
+                    <kbd className="shrink-0 rounded-md bg-neutral-800 px-1.5 py-0.5 text-[11px] font-medium text-neutral-200">
                       {keys}
                     </kbd>
                   </li>

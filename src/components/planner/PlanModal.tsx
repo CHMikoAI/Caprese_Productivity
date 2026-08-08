@@ -8,7 +8,7 @@ import { useEscape } from "@/lib/useShortcuts";
 import type { Entry } from "@/lib/types";
 
 const inputClass =
-  "rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-accent focus:outline-none";
+  "rounded-xl bg-neutral-800 px-3.5 py-2.5 text-sm text-neutral-50 placeholder:text-neutral-500 outline-none focus:ring-2 focus:ring-accent/40";
 
 const DURATIONS = [30, 60, 90, 120, 180, 240];
 
@@ -70,7 +70,7 @@ export default function PlanModal({
     >
       <form
         onSubmit={submit}
-        className="my-auto w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl"
+        className="my-auto w-full max-w-md animate-sheet-up rounded-2xl bg-neutral-900 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">

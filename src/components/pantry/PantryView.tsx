@@ -33,7 +33,7 @@ type ArtMap = Record<Ingredient | "salad", string>;
 
 type TableCard = { id: string; ingredient: Ingredient; flipped: boolean };
 
-const panelClass = "rounded-2xl border border-neutral-800 bg-neutral-900/50";
+const panelClass = "card";
 
 export default function PantryView({
   initialPicks,
@@ -186,12 +186,10 @@ export default function PantryView({
   // ----- render -----
 
   return (
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6">
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 sm:px-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
-          Pantry
-        </h1>
-        <span className="flex items-center gap-1.5 rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-sm text-neutral-200">
+        <h1 className="title-lg">Pantry</h1>
+        <span className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-3 py-1 text-sm text-neutral-200">
           <Layers className="h-3.5 w-3.5 text-accent" />
           <span key={picks} className="inline-block animate-count-pulse font-semibold">
             {picks}
@@ -199,13 +197,9 @@ export default function PantryView({
           {picks === 1 ? "pick" : "picks"}
         </span>
       </div>
-      <p className="mt-1 text-sm text-neutral-500">
-        Earn picks, flip cards, collect ingredients — five tomatoes, two basil,
-        two olive oil and one mozzarella make a caprese salad to treat yourself.
-      </p>
 
       {/* ---- draw area ---- */}
-      <section className={`mt-6 ${panelClass} p-5`}>
+      <section className={`mt-5 ${panelClass} p-5`}>
         {table.length === 0 ? (
           picks > 0 ? (
             <div className="flex flex-col items-center gap-4 py-6 sm:flex-row sm:justify-center sm:gap-8">
@@ -237,7 +231,7 @@ export default function PantryView({
                     <button
                       onClick={() => draw(picks)}
                       disabled={busyDraw}
-                      className="rounded-xl border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-800 disabled:opacity-40"
+                      className="btn-plain disabled:opacity-40"
                     >
                       Draw all {picks}
                     </button>
@@ -274,7 +268,7 @@ export default function PantryView({
             {unflipped === 0 && picks > 0 && (
               <button
                 onClick={() => setTable([])}
-                className="mt-4 rounded-xl border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-800"
+                className="btn-plain mt-4"
               >
                 Back to the deck ({picks} {picks === 1 ? "pick" : "picks"} left)
               </button>
@@ -414,7 +408,7 @@ export default function PantryView({
         </h2>
 
         {readySalads.length === 0 && redeemedSalads.length === 0 && (
-          <p className="mt-2 rounded-xl border border-dashed border-neutral-800 px-4 py-8 text-center text-sm text-neutral-600">
+          <p className="mt-2 px-4 py-8 text-center text-sm text-neutral-500">
             No salads yet. Collect ingredients and craft your first one.
           </p>
         )}
@@ -502,7 +496,7 @@ function RedeemModal({
       onClick={onClose}
     >
       <div
-        className="my-auto w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-900 p-6 shadow-2xl"
+        className="my-auto w-full max-w-md animate-sheet-up rounded-2xl bg-neutral-900 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -526,12 +520,12 @@ function RedeemModal({
           placeholder="e.g. movie night, a fancy coffee, new book…"
           rows={2}
           autoFocus
-          className="mt-3 w-full resize-none rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-2.5 text-sm leading-relaxed text-neutral-100 placeholder:text-neutral-600 focus:border-accent focus:outline-none"
+          className="field mt-3 resize-none leading-relaxed"
         />
         <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="rounded-xl border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-800"
+            className="btn-plain"
           >
             Cancel
           </button>

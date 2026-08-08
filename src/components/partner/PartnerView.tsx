@@ -375,47 +375,41 @@ export default function PartnerView({
   const showWrapUp = weekGoals.length > 0 && (allDone || week < currentWeek);
 
   return (
-    <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-8 sm:px-6">
-      <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
-        Partner
-      </h1>
-      <p className="mt-1 text-sm text-neutral-500">
-        A few small goals a week. Every goal you close comes with a short
-        debrief — that&apos;s where the progress comes from.
-      </p>
+    <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
+      <h1 className="title-lg">Partner</h1>
 
       {/* stats */}
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-4">
-          <div className="text-xs text-neutral-500">This week</div>
-          <p className="mt-2 text-xl font-semibold tabular-nums text-neutral-100">
+      <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <div className="card p-4">
+          <div className="section-label">This week</div>
+          <p className="mt-1.5 text-xl font-semibold tabular-nums text-neutral-50">
             {stats.thisWeekDone}
             <span className="text-neutral-600">/{stats.thisWeekTotal}</span>
           </p>
           <ProgressBar done={stats.thisWeekDone} total={stats.thisWeekTotal} />
         </div>
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-4">
-          <div className="text-xs text-neutral-500">Goals done</div>
-          <p className="mt-2 text-xl font-semibold tabular-nums text-neutral-100">
+        <div className="card p-4">
+          <div className="section-label">Goals done</div>
+          <p className="mt-1.5 text-xl font-semibold tabular-nums text-neutral-50">
             {stats.goalsDone}
           </p>
-          <p className="mt-0.5 text-xs text-neutral-600">all time</p>
+          <p className="mt-0.5 text-xs text-neutral-500">all time</p>
         </div>
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-4">
-          <div className="text-xs text-neutral-500">Streak</div>
-          <p className="mt-2 text-xl font-semibold tabular-nums text-neutral-100">
+        <div className="card p-4">
+          <div className="section-label">Streak</div>
+          <p className="mt-1.5 text-xl font-semibold tabular-nums text-neutral-50">
             {stats.streak}
           </p>
-          <p className="mt-0.5 text-xs text-neutral-600">
+          <p className="mt-0.5 text-xs text-neutral-500">
             {stats.streak === 1 ? "week" : "weeks"} in a row
           </p>
         </div>
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-900/50 p-4">
-          <div className="text-xs text-neutral-500">Feels like</div>
-          <p className="mt-2 text-xl font-semibold tabular-nums text-neutral-100">
+        <div className="card p-4">
+          <div className="section-label">Feels like</div>
+          <p className="mt-1.5 text-xl font-semibold tabular-nums text-neutral-50">
             {stats.level ? stats.level.now.toFixed(1) : "—"}
           </p>
-          <p className="mt-0.5 text-xs text-neutral-600">
+          <p className="mt-0.5 text-xs text-neutral-500">
             {!stats.level
               ? "rate your goals"
               : stats.level.direction === "easier"
@@ -430,14 +424,14 @@ export default function PartnerView({
       </div>
 
       {/* the week in focus */}
-      <section className="mt-6 rounded-2xl border border-neutral-800 bg-neutral-900/50">
-        <header className="flex items-center gap-2 border-b border-neutral-800 px-2 py-3 sm:px-4">
+      <section className="card mt-5 overflow-hidden">
+        <header className="flex items-center gap-2 border-b border-neutral-800 px-2 py-2.5 sm:px-3">
           <button
             onClick={() => {
               setWeek(shiftWeek(week, -1));
               setOpenId(null);
             }}
-            className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+            className="rounded-full p-2 text-accent transition-opacity active:opacity-50"
             aria-label="Previous week"
           >
             <ChevronLeft className="h-5 w-5" />
@@ -465,35 +459,32 @@ export default function PartnerView({
               setWeek(shiftWeek(week, 1));
               setOpenId(null);
             }}
-            className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+            className="rounded-full p-2 text-accent transition-opacity active:opacity-50"
             aria-label="Next week"
           >
             <ChevronRight className="h-5 w-5" />
           </button>
         </header>
 
-        <div className="px-3 py-4 sm:px-5">
+        <div>
           {/* the week's goals — independent of each other */}
-          <ul className="flex flex-col gap-2">
+          <ul className="list-group">
             {weekGoals.map((goal) => {
               const done = Boolean(goal.done_at);
               const open = openId === goal.id;
               return (
-                <li
-                  key={goal.id}
-                  className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/40"
-                >
-                  <div className="flex items-start gap-1">
+                <li key={goal.id}>
+                  <div className="flex items-start gap-1 pr-1">
                     <button
                       onClick={() => (done ? reopenGoal(goal) : openGoal(goal))}
                       aria-label={done ? "Reopen goal" : "Close goal"}
                       className="flex h-11 w-11 shrink-0 items-center justify-center"
                     >
                       <span
-                        className={`flex h-6 w-6 items-center justify-center rounded-full border transition-colors ${
+                        className={`flex h-[26px] w-[26px] items-center justify-center rounded-full border-[1.5px] transition-colors ${
                           done
                             ? "border-accent bg-accent text-white"
-                            : "border-neutral-600 text-transparent hover:border-neutral-400"
+                            : "border-neutral-600 text-transparent"
                         }`}
                       >
                         <Check className="h-4 w-4" strokeWidth={3} />
@@ -515,7 +506,7 @@ export default function PartnerView({
                       {!open && done && (
                         <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                           {goal.difficulty && (
-                            <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-400">
+                            <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-[11px] font-medium text-neutral-300">
                               {goal.difficulty} ·{" "}
                               {PARTNER_DIFFICULTY_LABEL[goal.difficulty]}
                             </span>
@@ -525,16 +516,11 @@ export default function PartnerView({
                           </span>
                         </span>
                       )}
-                      {!open && !done && (
-                        <span className="mt-0.5 block text-xs text-neutral-600">
-                          Tap to rate it and close
-                        </span>
-                      )}
                     </button>
 
                     <button
                       onClick={() => removeGoal(goal)}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center text-neutral-600 transition-colors hover:text-accent"
+                      className="flex h-11 w-11 shrink-0 items-center justify-center text-neutral-600 transition-opacity active:opacity-50"
                       aria-label="Delete goal"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -542,20 +528,18 @@ export default function PartnerView({
                   </div>
 
                   {open && (
-                    <div className="border-t border-neutral-800 bg-neutral-900/60 px-3 py-3">
-                      <label className="block text-xs text-neutral-500">
-                        Goal
-                        <input
-                          value={editTitle}
-                          onChange={(e) => setEditTitle(e.target.value)}
-                          className="mt-1 w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 focus:border-accent focus:outline-none"
-                        />
-                      </label>
+                    <div className="border-t border-neutral-800 bg-neutral-950/50 px-3 py-3.5 sm:px-4">
+                      <input
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        aria-label="Goal"
+                        className="field"
+                      />
 
-                      <div className="mt-3 text-xs text-neutral-500">
-                        How hard did it feel?
+                      <div className="mt-4 flex items-baseline justify-between">
+                        <span className="section-label">How hard did it feel?</span>
                         {editLevel !== null && (
-                          <span className="ml-2 text-neutral-300">
+                          <span className="text-xs font-medium text-neutral-300">
                             {PARTNER_DIFFICULTY_LABEL[editLevel]}
                           </span>
                         )}
@@ -567,10 +551,10 @@ export default function PartnerView({
                             type="button"
                             onClick={() => setEditLevel(level)}
                             aria-pressed={editLevel === level}
-                            className={`h-10 flex-1 rounded-lg border text-sm font-medium tabular-nums transition-colors ${
+                            className={`h-11 flex-1 rounded-xl text-base font-semibold tabular-nums transition-colors ${
                               editLevel === level
-                                ? "border-accent bg-accent/15 text-neutral-50"
-                                : "border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
+                                ? "bg-accent text-white"
+                                : "bg-neutral-800 text-neutral-300"
                             }`}
                           >
                             {level}
@@ -578,33 +562,26 @@ export default function PartnerView({
                         ))}
                       </div>
 
-                      <label className="mt-3 block text-xs text-neutral-500">
-                        What happened?
-                        <textarea
-                          value={editNotes}
-                          onChange={(e) => setEditNotes(e.target.value)}
-                          rows={4}
-                          placeholder="What worked, what got in the way, what to try next time."
-                          className="mt-1 w-full resize-y rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm leading-relaxed text-neutral-100 placeholder:text-neutral-600 focus:border-accent focus:outline-none"
-                        />
-                      </label>
+                      <textarea
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                        rows={4}
+                        aria-label="What happened?"
+                        placeholder="What happened? What worked, what got in the way."
+                        className="field mt-4 resize-y leading-relaxed"
+                      />
 
                       <div className="mt-3 flex items-center gap-2">
-                        {!done && !debriefReady && (
-                          <p className="min-w-0 flex-1 text-xs text-neutral-600">
-                            Rate it and write a line to close this goal.
-                          </p>
-                        )}
                         <button
                           onClick={() => setOpenId(null)}
-                          className="ml-auto rounded-lg px-3 py-2 text-sm text-neutral-400 transition-colors hover:text-neutral-100"
+                          className="ml-auto px-3 py-2 text-sm font-medium text-neutral-400 transition-opacity active:opacity-50"
                         >
                           Cancel
                         </button>
                         {done ? (
                           <button
                             onClick={() => saveGoal(goal)}
-                            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                            className="btn-primary"
                           >
                             Save
                           </button>
@@ -612,7 +589,7 @@ export default function PartnerView({
                           <button
                             onClick={() => closeGoal(goal)}
                             disabled={!debriefReady || busy}
-                            className="flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                            className="btn-primary"
                           >
                             <Check className="h-4 w-4" strokeWidth={3} />
                             Close goal
@@ -627,7 +604,7 @@ export default function PartnerView({
           </ul>
 
           {weekGoals.length === 0 && (
-            <div className="rounded-xl border border-dashed border-neutral-800 px-4 py-7 text-center">
+            <div className="px-4 py-8 text-center">
               <p className="text-sm text-neutral-500">
                 No goals for this week yet.
               </p>
@@ -635,7 +612,7 @@ export default function PartnerView({
                 <button
                   onClick={repeatLastWeek}
                   disabled={busy}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-neutral-700 px-3 py-2 text-xs text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100 disabled:opacity-40"
+                  className="btn-plain mt-3 text-xs"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Repeat last week&apos;s goals
@@ -644,77 +621,69 @@ export default function PartnerView({
             </div>
           )}
 
-          <form onSubmit={addGoal} className="mt-3 flex gap-2">
+          <form
+            onSubmit={addGoal}
+            className="flex gap-2 border-t border-neutral-800 px-3 py-3 sm:px-4"
+          >
             <input
               ref={addRef}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Add a goal for this week…"
-              className="min-w-0 flex-1 rounded-xl border border-neutral-700 bg-neutral-950 px-3.5 py-2.5 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-accent focus:outline-none"
+              className="field min-w-0 flex-1"
             />
             <button
               type="submit"
               disabled={busy || !draft.trim()}
-              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              className="btn-primary shrink-0"
             >
               <Plus className="h-4 w-4" />
               Add
             </button>
           </form>
-
-          <p className="mt-2 text-xs text-neutral-600">
-            {weekGoals.length >= PARTNER_GOALS_SWEET_SPOT
-              ? "Two or three a week is plenty — depth beats volume."
-              : `Every closed goal pays ${PICKS_FOR.partnerGoal} pick, a fully closed week ${PICKS_FOR.partnerWeek} more.`}
-          </p>
-
-          {/* wrap-up: the one thing to carry forward */}
-          {showWrapUp && (
-            <div
-              className={`mt-4 rounded-xl border p-4 ${
-                allDone
-                  ? "border-accent/30 bg-accent/5"
-                  : "border-neutral-800 bg-neutral-950/40"
-              }`}
-            >
-              <p className="text-sm font-medium text-neutral-100">
-                {allDone
-                  ? `Week complete — all ${weekGoals.length} goals done.`
-                  : `Week over — ${weekDone} of ${weekGoals.length} goals done.`}
-              </p>
-              <label className="mt-2 block text-xs text-neutral-500">
-                What&apos;s the one thing you take into next week?
-                <textarea
-                  value={takeaway}
-                  onChange={(e) => setTakeaway(e.target.value)}
-                  onBlur={storeTakeaway}
-                  rows={2}
-                  placeholder="One sentence — the lesson, not the recap."
-                  className="mt-1 w-full resize-y rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm leading-relaxed text-neutral-100 placeholder:text-neutral-600 focus:border-accent focus:outline-none"
-                />
-              </label>
-              {takeaway.trim() !== takeawaySaved && (
-                <div className="mt-2 flex justify-end">
-                  <button
-                    onClick={storeTakeaway}
-                    className="rounded-lg border border-neutral-700 px-3 py-1.5 text-xs text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
-                  >
-                    Save takeaway
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </section>
 
+      <p className="mt-2 px-1 text-xs text-neutral-500">
+        {weekGoals.length >= PARTNER_GOALS_SWEET_SPOT
+          ? "Two or three a week is plenty — depth beats volume."
+          : `Every closed goal pays ${PICKS_FOR.partnerGoal} pick, a fully closed week ${PICKS_FOR.partnerWeek} more.`}
+      </p>
+
+      {/* wrap-up: the one thing to carry forward */}
+      {showWrapUp && (
+        <div className={`card mt-5 p-4 ${allDone ? "bg-accent/10" : ""}`}>
+          <p className="text-sm font-semibold text-neutral-50">
+            {allDone
+              ? `Week complete — all ${weekGoals.length} goals done.`
+              : `Week over — ${weekDone} of ${weekGoals.length} goals done.`}
+          </p>
+          <label className="mt-2.5 block section-label">
+            What&apos;s the one thing you take into next week?
+            <textarea
+              value={takeaway}
+              onChange={(e) => setTakeaway(e.target.value)}
+              onBlur={storeTakeaway}
+              rows={2}
+              placeholder="One sentence — the lesson, not the recap."
+              className="field mt-1.5 resize-y leading-relaxed"
+            />
+          </label>
+          {takeaway.trim() !== takeawaySaved && (
+            <div className="mt-2 flex justify-end">
+              <button onClick={storeTakeaway} className="btn-plain text-xs">
+                Save takeaway
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* the weeks so far */}
       {timeline.length > 0 && (
-        <section className="mt-8 pb-8">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-            The weeks so far
-          </h3>
-          <ul className="mt-2 flex flex-col gap-1">
+        <section className="mt-7 pb-8">
+          <h3 className="section-label px-1">The weeks so far</h3>
+          <ul className="card mt-1.5 list-group overflow-hidden">
             {timeline.map((entry) => {
               const label = weekOf(entry.key);
               const active = entry.key === week;
@@ -727,13 +696,11 @@ export default function PartnerView({
                       setOpenId(null);
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
-                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
-                      active
-                        ? "bg-neutral-900 text-neutral-100"
-                        : "text-neutral-400 hover:bg-neutral-900/60"
+                    className={`flex w-full items-center gap-3 px-3.5 py-3 text-left transition-opacity active:opacity-60 ${
+                      active ? "bg-neutral-800 text-neutral-50" : "text-neutral-300"
                     }`}
                   >
-                    <span className="w-12 shrink-0 text-xs font-medium tabular-nums">
+                    <span className="w-12 shrink-0 text-sm font-medium tabular-nums">
                       KW {label.kw}
                     </span>
                     <span className="flex shrink-0 gap-1">

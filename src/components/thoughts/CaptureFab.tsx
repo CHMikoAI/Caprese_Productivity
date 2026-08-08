@@ -308,7 +308,7 @@ export default function CaptureFab() {
           onClick={close}
         >
           <div
-            className="w-full border border-neutral-800 bg-neutral-900 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl"
+            className="w-full animate-sheet-up rounded-t-2xl bg-neutral-900 p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl sm:w-full sm:max-w-md sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
@@ -352,7 +352,7 @@ export default function CaptureFab() {
                 <div className="flex w-full items-center gap-3">
                   <button
                     onClick={switchToText}
-                    className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-neutral-700 px-4 py-3 text-sm font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
+                    className="btn-plain flex-1 py-3"
                   >
                     <Keyboard className="h-4 w-4" />
                     Text
@@ -402,7 +402,7 @@ export default function CaptureFab() {
                   {draftSource === "voice" && (
                     <button
                       onClick={beginVoice}
-                      className="flex items-center gap-1.5 rounded-xl border border-neutral-700 px-3 py-2 text-sm text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100"
+                      className="btn-plain px-3 py-2"
                     >
                       <Mic className="h-4 w-4" />
                       Record again

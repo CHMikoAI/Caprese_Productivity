@@ -54,7 +54,7 @@ function timeLabel(min: number) {
 }
 
 const inputClass =
-  "w-full rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-accent focus:outline-none";
+  "w-full rounded-xl bg-neutral-800 px-3.5 py-2.5 text-sm text-neutral-50 placeholder:text-neutral-500 outline-none focus:ring-2 focus:ring-accent/40";
 const labelClass = "flex flex-col gap-1.5 text-xs font-medium text-neutral-500";
 
 function TimeSelect({
@@ -196,7 +196,7 @@ export default function EntryModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4">
       <div
-        className={`flex w-full max-w-2xl flex-col rounded-t-2xl border border-neutral-800 bg-neutral-900 shadow-2xl sm:rounded-2xl ${
+        className={`flex w-full max-w-2xl animate-sheet-up flex-col rounded-t-2xl bg-neutral-900 shadow-2xl sm:rounded-2xl ${
           notesExpanded
             ? "h-[92dvh] sm:h-[85vh]"
             : "max-h-[92dvh] sm:max-h-[90vh]"
@@ -207,7 +207,7 @@ export default function EntryModal({
             {mode === "create" ? "New" : `Edit ${ENTRY_TYPE_LABEL[type].toLowerCase()}`}
           </h2>
           {/* type selector */}
-          <div className="flex rounded-lg border border-neutral-800 bg-neutral-950 p-0.5 text-xs">
+          <div className="segmented">
             {ENTRY_TYPES.map((t) => {
               const Icon = ENTRY_TYPE_ICON[t];
               return (
@@ -215,11 +215,10 @@ export default function EntryModal({
                   key={t}
                   type="button"
                   onClick={() => changeType(t)}
-                  className={
-                    type === t
-                      ? "flex items-center gap-1.5 rounded-md bg-accent px-3 py-2 font-medium text-white sm:px-2.5 sm:py-1.5"
-                      : "flex items-center gap-1.5 rounded-md px-3 py-2 text-neutral-400 transition-colors hover:text-neutral-200 sm:px-2.5 sm:py-1.5"
-                  }
+                  data-active={type === t}
+                  className={`flex items-center gap-1.5 ${
+                    type === t ? "!bg-accent !text-white" : ""
+                  }`}
                 >
                   <Icon className="h-3.5 w-3.5" />
                   {ENTRY_TYPE_LABEL[t]}
@@ -261,7 +260,7 @@ export default function EntryModal({
           )}
 
           {!notesExpanded && type === "todo" && (
-            <div className="flex flex-col gap-4 rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
+            <div className="flex flex-col gap-4 rounded-xl bg-neutral-950/50 p-4">
               <label className={labelClass}>
                 Deadline
                 <DateField
@@ -278,7 +277,7 @@ export default function EntryModal({
           )}
 
           {!notesExpanded && type !== "todo" && (
-            <div className="flex flex-col gap-4 rounded-xl border border-neutral-800 bg-neutral-950/40 p-4">
+            <div className="flex flex-col gap-4 rounded-xl bg-neutral-950/50 p-4">
               {/* start — optional for tasks/goals (leave empty), required for events */}
               {startDate ? (
                 <div
@@ -349,17 +348,13 @@ export default function EntryModal({
                 <>
                   <div className="flex items-center gap-2 text-xs">
                     <span className="font-medium text-neutral-500">Ends by</span>
-                    <div className="flex rounded-lg border border-neutral-800 bg-neutral-950 p-0.5">
+                    <div className="segmented">
                       {(["duration", "end"] as const).map((m) => (
                         <button
                           key={m}
                           type="button"
                           onClick={() => setEndMode(m)}
-                          className={
-                            endMode === m
-                              ? "rounded-md bg-neutral-800 px-2.5 py-1 font-medium text-neutral-100"
-                              : "rounded-md px-2.5 py-1 text-neutral-400 hover:text-neutral-200"
-                          }
+                          data-active={endMode === m}
                         >
                           {m === "duration" ? "Duration" : "End date"}
                         </button>

@@ -64,7 +64,7 @@ export default function DateField({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm transition-colors hover:border-neutral-600 focus:border-accent focus:outline-none"
+        className="flex w-full items-center gap-2 rounded-xl bg-neutral-800 px-3.5 py-2.5 text-sm outline-none transition-opacity active:opacity-70 focus:ring-2 focus:ring-accent/40"
       >
         <CalendarIcon className="h-4 w-4 shrink-0 text-neutral-500" />
         <span className={value ? "text-neutral-100" : "text-neutral-600"}>
@@ -87,7 +87,7 @@ export default function DateField({
       </button>
 
       {open && (
-        <div className="absolute left-0 z-[60] mt-1 w-64 rounded-xl border border-neutral-700 bg-neutral-900 p-2 shadow-2xl">
+        <div className="absolute left-0 z-[60] mt-1 w-64 rounded-2xl bg-neutral-800 p-2 shadow-2xl">
           <div className="flex items-center justify-between px-1 pb-2">
             <button
               type="button"

@@ -42,7 +42,7 @@ import { useShortcuts } from "@/lib/useShortcuts";
 import { type Category, type Entry, type EntryStatus } from "@/lib/types";
 
 const inputClass =
-  "rounded-xl border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-600 focus:border-accent focus:outline-none";
+  "rounded-xl bg-neutral-800 px-3.5 py-2.5 text-sm text-neutral-50 placeholder:text-neutral-500 outline-none focus:ring-2 focus:ring-accent/40";
 
 type ModalState = { mode: "create" } | { mode: "edit"; entry: Entry };
 type TypeFilter = "all" | "task" | "todo" | "goal";
@@ -414,7 +414,7 @@ export default function PlannerView({
   // ----- row rendering -----
 
   const ghostBtn =
-    "flex items-center gap-1 rounded-lg border border-neutral-700 px-3 py-2 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800 sm:px-2.5 sm:py-1.5";
+    "flex items-center gap-1 rounded-xl bg-neutral-800 px-3 py-2 text-xs font-medium text-neutral-200 transition-opacity active:opacity-70 sm:px-2.5 sm:py-1.5";
   const primaryBtn =
     "flex items-center gap-1 rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 sm:px-2.5 sm:py-1.5";
   // Touch has no hover, so the reveal-on-hover trick would leave these buttons
@@ -440,7 +440,7 @@ export default function PlannerView({
     return (
       // On phones the action buttons wrap onto their own line so the title
       // keeps its room; from sm on everything sits on one line as before.
-      <li className="group flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-neutral-800 bg-neutral-900/60 px-4 py-3 transition-colors hover:border-neutral-700">
+      <li className="group card flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
         <TypeIcon
           className="h-4 w-4 shrink-0 text-neutral-500"
           aria-label={entry.type}
@@ -589,17 +589,12 @@ export default function PlannerView({
   // Week / Month / Year — how far ahead Upcoming looks. Sits in the section
   // header because it only scopes this list, not the whole planner.
   const horizonToggle = (
-    <div className="flex shrink-0 rounded-lg border border-neutral-800 bg-neutral-900/60 p-0.5 text-[11px]">
+    <div className="segmented shrink-0">
       {HORIZONS.map((h) => (
         <button
           key={h.key}
           onClick={() => setHorizon(h.key)}
           aria-pressed={horizon === h.key}
-          className={
-            horizon === h.key
-              ? "rounded-md bg-neutral-800 px-2 py-1 font-medium text-neutral-100"
-              : "rounded-md px-2 py-1 text-neutral-400 transition-colors hover:text-neutral-200"
-          }
         >
           {h.label}
         </button>
@@ -635,7 +630,7 @@ export default function PlannerView({
           <li>
             <button
               onClick={() => setHorizon(nextHorizon)}
-              className="w-full rounded-xl border border-dashed border-neutral-800 px-4 py-2.5 text-center text-xs text-neutral-500 transition-colors hover:border-neutral-700 hover:text-neutral-300"
+              className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-center text-xs font-medium text-accent transition-opacity active:opacity-60"
             >
               +{groups.later.length} beyond this {horizonNoun} — show{" "}
               {nextHorizon === "month" ? "the month" : "the year"}
@@ -699,7 +694,7 @@ export default function PlannerView({
       <button
         type="submit"
         disabled={busy || !newTitle.trim()}
-        className="flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-800 disabled:opacity-40"
+        className="btn-plain shrink-0 disabled:opacity-40"
       >
         <Plus className="h-4 w-4" />
         Add
@@ -739,17 +734,15 @@ export default function PlannerView({
     // Centred like the other tabs; only the xl two-column board goes full-width.
     <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6 xl:max-w-none">
       {/* header */}
-      <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
-          Planner
-        </h1>
+      <div className="flex items-center gap-2.5">
+        <h1 className="title-lg">Planner</h1>
         <span className="text-sm text-neutral-500">
           {groups.review.length} to review
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
             onClick={() => setProjectsOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-neutral-700 px-3 py-1.5 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-800"
+            className="btn-plain px-3 py-1.5"
           >
             <FolderKanban className="h-4 w-4" />
             Projects
@@ -757,7 +750,7 @@ export default function PlannerView({
           <button
             onClick={() => setModal({ mode: "create" })}
             title="New entry (N)"
-            className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            className="btn-primary px-3.5 py-1.5"
           >
             <Plus className="h-4 w-4" />
             New
@@ -767,16 +760,12 @@ export default function PlannerView({
 
       {/* filters */}
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-neutral-800/80 pb-4">
-        <div className="flex rounded-lg border border-neutral-800 bg-neutral-900/60 p-0.5 text-xs">
+        <div className="segmented">
           {TYPE_FILTERS.map((f) => (
             <button
               key={f.key}
               onClick={() => setTypeFilter(f.key)}
-              className={
-                typeFilter === f.key
-                  ? "rounded-md bg-neutral-800 px-3 py-1 font-medium text-neutral-100"
-                  : "rounded-md px-3 py-1 text-neutral-400 transition-colors hover:text-neutral-200"
-              }
+              data-active={typeFilter === f.key}
             >
               {f.label}
             </button>
@@ -873,7 +862,7 @@ export default function PlannerView({
           ) : (
             <button
               onClick={() => setSearchOpen(true)}
-              className="rounded-lg border border-neutral-800 p-2 text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-200"
+              className="rounded-xl bg-neutral-800 p-2 text-neutral-300 transition-opacity active:opacity-70"
               aria-label="Search"
               title="Search (/)"
             >
@@ -1085,7 +1074,7 @@ function Section({
 
 function EmptyHint({ text }: { text: string }) {
   return (
-    <li className="rounded-xl border border-dashed border-neutral-800 px-4 py-4 text-center text-sm text-neutral-600">
+    <li className="px-4 py-5 text-center text-sm text-neutral-500">
       {text}
     </li>
   );

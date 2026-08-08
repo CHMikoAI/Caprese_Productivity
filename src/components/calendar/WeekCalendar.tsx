@@ -1302,8 +1302,8 @@ export default function WeekCalendar({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-neutral-800/80 px-4 py-3 sm:px-6">
-        <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-neutral-800 px-4 py-3 sm:px-6">
+        <h1 className="text-xl font-bold tracking-tight text-neutral-50">
           {headerMain}
         </h1>
         {headerSub && (
@@ -1313,23 +1313,20 @@ export default function WeekCalendar({
         {/* On phones the controls take a clean full row of their own. The view
             set differs per breakpoint (see VIEW_OPTIONS.showOn). */}
         <div className="flex w-full flex-wrap items-center justify-between gap-1 sm:ml-auto sm:w-auto sm:justify-start sm:gap-1.5">
-          <div className="flex rounded-lg border border-neutral-800 bg-neutral-900/60 p-0.5 text-xs">
+          <div className="segmented">
             {VIEW_OPTIONS.map((option) => {
               const visibility =
                 option.showOn === "mobile"
-                  ? "sm:hidden "
+                  ? "sm:hidden"
                   : option.showOn === "desktop"
-                    ? "hidden sm:block "
+                    ? "hidden sm:block"
                     : "";
               return (
                 <button
                   key={option.key}
                   onClick={() => setView(option.key)}
-                  className={`${visibility}${
-                    view === option.key
-                      ? "rounded-md bg-neutral-800 px-3 py-1.5 font-medium text-neutral-100 sm:px-2.5 sm:py-1"
-                      : "rounded-md px-3 py-1.5 text-neutral-400 transition-colors hover:text-neutral-200 sm:px-2.5 sm:py-1"
-                  }`}
+                  data-active={view === option.key}
+                  className={visibility}
                 >
                   {option.label}
                 </button>
@@ -1340,7 +1337,7 @@ export default function WeekCalendar({
           <button
             onClick={goToday}
             title="Today (T)"
-            className="rounded-lg px-3 py-2 text-sm text-neutral-300 transition-colors hover:bg-neutral-900 hover:text-neutral-100 sm:py-1.5"
+            className="px-3 py-2 text-sm font-medium text-accent transition-opacity active:opacity-50 sm:py-1.5"
           >
             Today
           </button>
@@ -1367,7 +1364,7 @@ export default function WeekCalendar({
               })
             }
             title="New entry (N)"
-            className="flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 sm:ml-1 sm:py-1.5"
+            className="btn-primary px-3.5 py-2 sm:ml-1 sm:py-1.5"
           >
             <Plus className="h-5 w-5 sm:h-4 sm:w-4" />
             <span className="hidden sm:inline">New</span>

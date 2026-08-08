@@ -1,6 +1,6 @@
 export default function SetupBanner() {
   return (
-    <div className="mx-4 mt-4 rounded-xl border border-neutral-800 border-l-2 border-l-accent bg-neutral-900/60 px-4 py-3 text-sm text-neutral-300 sm:mx-6">
+    <div className="mx-4 mt-4 rounded-2xl border-l-2 border-l-accent bg-neutral-900 px-4 py-3 text-sm text-neutral-300 sm:mx-6">
       <span className="font-medium text-neutral-100">Supabase is not connected</span>
       {" — "}
       the UI works, but nothing is saved. Set{" "}

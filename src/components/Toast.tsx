@@ -18,7 +18,7 @@ export function useToast() {
 export default function Toast({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-neutral-700 bg-neutral-800 px-4 py-2 text-sm text-neutral-100 shadow-lg">
+    <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 animate-toast-in rounded-2xl bg-neutral-800 px-4 py-2.5 text-sm font-medium text-neutral-50 shadow-2xl">
       {message}
     </div>
   );

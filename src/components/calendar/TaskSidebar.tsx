@@ -22,7 +22,7 @@ export default function TaskSidebar({
   if (!open) return null;
 
   return (
-    <aside className="absolute inset-y-0 right-0 z-30 flex w-72 flex-col border-l border-neutral-800 bg-neutral-950 shadow-2xl md:static md:bg-neutral-900/30 md:shadow-none">
+    <aside className="absolute inset-y-0 right-0 z-30 flex w-72 flex-col border-l border-neutral-800 bg-neutral-950 shadow-2xl md:static md:shadow-none">
       <div className="flex items-center justify-between px-4 pb-2 pt-4">
         <h2 className="text-sm font-semibold text-neutral-200">
           To plan
@@ -58,7 +58,7 @@ export default function TaskSidebar({
                     onDragStartTask(task);
                   }}
                   onDragEnd={onDragEndTask}
-                  className="group flex cursor-grab items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-2.5 transition-colors hover:border-neutral-700 active:cursor-grabbing"
+                  className="group flex cursor-grab items-center gap-2 rounded-xl bg-neutral-900 px-3 py-2.5 transition-opacity hover:opacity-80 active:cursor-grabbing"
                 >
                   <GripVertical className="h-4 w-4 shrink-0 text-neutral-600" />
                   <TypeIcon

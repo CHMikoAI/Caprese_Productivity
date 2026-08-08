@@ -19,7 +19,7 @@ type StatusFilter = "all" | "open" | "sorted";
 type TimeFilter = "all" | "today" | "7d" | "30d";
 
 const inputClass =
-  "rounded-lg border border-neutral-700 bg-neutral-950 px-2.5 py-2 text-sm text-neutral-200 focus:border-accent focus:outline-none sm:py-1.5 sm:text-xs";
+  "rounded-xl bg-neutral-800 px-3 py-2 text-sm text-neutral-100 outline-none focus:ring-2 focus:ring-accent/40 sm:py-1.5 sm:text-xs";
 
 const STATUS_OPTIONS: { key: StatusFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -212,7 +212,7 @@ export default function ThoughtsView({
   // not the saturated calendar-block treatment. Buttons use the app's neutral
   // style so the box sits naturally in the rest of the UI.
   const actionCls =
-    "flex items-center gap-1 rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100 sm:px-2.5 sm:py-1.5 sm:text-xs";
+    "flex items-center gap-1 rounded-xl bg-neutral-800 px-3 py-2 text-sm font-medium text-neutral-200 transition-opacity active:opacity-70 sm:px-2.5 sm:py-1.5 sm:text-xs";
 
   const card = (t: Thought, isArchive: boolean) => {
     const cat = catFor(t);
@@ -274,10 +274,8 @@ export default function ThoughtsView({
   return (
     <div className="w-full flex-1 px-4 py-8 sm:px-6">
       {/* header */}
-      <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold tracking-tight text-neutral-100">
-          Thoughts
-        </h1>
+      <div className="flex items-baseline gap-2.5">
+        <h1 className="title-lg">Thoughts</h1>
         <span className="text-sm text-neutral-500">{open.length} open</span>
       </div>
 
@@ -303,14 +301,14 @@ export default function ThoughtsView({
         {!openCollapsed && (
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             {open.length === 0 && (
-              <p className="rounded-xl border border-dashed border-neutral-800 px-4 py-6 text-center text-sm text-neutral-600 sm:col-span-2">
+              <p className="px-4 py-6 text-center text-sm text-neutral-500 sm:col-span-2">
                 Inbox zero — nothing to triage.
               </p>
             )}
             {open.map((t) => (
               <div
                 key={t.id}
-                className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-3.5"
+                className="card p-3.5"
               >
                 <div className="text-xs text-neutral-500">
                   {whenLabel(t.created_at)}
@@ -333,7 +331,7 @@ export default function ThoughtsView({
                     </select>
                     <button
                       onClick={() => archive(t.id, true)}
-                      className="ml-auto flex items-center gap-1.5 rounded-lg border border-neutral-700 px-3 py-2 text-sm text-neutral-300 transition-colors hover:border-neutral-500 hover:text-neutral-100 sm:py-1.5 sm:text-xs"
+                      className="ml-auto flex items-center gap-1.5 rounded-xl bg-neutral-800 px-3 py-2 text-sm font-medium text-neutral-200 transition-opacity active:opacity-70 sm:py-1.5 sm:text-xs"
                     >
                       <Check className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
                       Complete
@@ -357,16 +355,12 @@ export default function ThoughtsView({
 
         {/* filters — planner-style bar */}
         <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-neutral-800/80 pb-4">
-          <div className="flex rounded-lg border border-neutral-800 bg-neutral-900/60 p-0.5 text-xs">
+          <div className="segmented">
             {STATUS_OPTIONS.map((o) => (
               <button
                 key={o.key}
                 onClick={() => setFilterStatus(o.key)}
-                className={
-                  filterStatus === o.key
-                    ? "rounded-md bg-neutral-800 px-3 py-2 font-medium text-neutral-100 sm:py-1.5"
-                    : "rounded-md px-3 py-2 text-neutral-400 transition-colors hover:text-neutral-200 sm:py-1.5"
-                }
+                data-active={filterStatus === o.key}
               >
                 {o.label}
               </button>
@@ -379,10 +373,10 @@ export default function ThoughtsView({
               <div className="hidden flex-wrap items-center gap-1.5 sm:flex">
                 <button
                   onClick={() => setFilterProject("all")}
-                  className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
                     filterProject === "all"
-                      ? "border-neutral-600 bg-neutral-800 text-neutral-100"
-                      : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
+                      ? "bg-neutral-700 text-neutral-50"
+                      : "bg-neutral-900 text-neutral-400"
                   }`}
                 >
                   All projects
@@ -444,7 +438,7 @@ export default function ThoughtsView({
 
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
           {filtered.length === 0 && (
-            <p className="rounded-xl border border-dashed border-neutral-800 px-4 py-8 text-center text-sm text-neutral-600 sm:col-span-2">
+            <p className="px-4 py-8 text-center text-sm text-neutral-500 sm:col-span-2">
               {active.length === 0
                 ? "No thoughts yet. Tap the capture button to jot one down."
                 : "No thoughts match these filters."}

@@ -64,7 +64,7 @@ export default function RichTextEditor({
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border border-neutral-700 bg-neutral-950 focus-within:border-accent ${
+      className={`overflow-hidden rounded-xl bg-neutral-800 focus-within:ring-2 focus-within:ring-accent/40 ${
         expanded ? "flex min-h-0 flex-1 flex-col" : ""
       }`}
     >
