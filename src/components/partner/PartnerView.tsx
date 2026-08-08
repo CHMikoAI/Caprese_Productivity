@@ -375,7 +375,9 @@ export default function PartnerView({
   const showWrapUp = weekGoals.length > 0 && (allDone || week < currentWeek);
 
   return (
-    <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
+    // pb clears the floating capture button on phones, so the last card never
+    // sits under it.
+    <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 pb-28 sm:px-6 desk:pb-8">
       <h1 className="title-lg">Partner</h1>
 
       {/* stats */}

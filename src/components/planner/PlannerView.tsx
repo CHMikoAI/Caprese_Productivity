@@ -480,7 +480,9 @@ export default function PlannerView({
                 )}
           </div>
         </button>
-        <div className="flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto">
+        {/* Wraps on narrow screens — three actions at the larger type size no
+            longer fit on one phone line. */}
+        <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-1.5 sm:w-auto">
           {actions}
         </div>
       </li>
@@ -732,11 +734,13 @@ export default function PlannerView({
 
   return (
     // Centred like the other tabs; only the xl two-column board goes full-width.
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6 xl:max-w-none">
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 pb-28 sm:px-6 desk:pb-8 xl:max-w-none">
       {/* header */}
       <div className="flex items-center gap-2.5">
         <h1 className="title-lg">Planner</h1>
-        <span className="text-sm text-neutral-500">
+        {/* The section headers already carry the counts; on a phone the title
+            row only has room for the two actions. */}
+        <span className="hidden text-sm text-neutral-500 sm:inline">
           {groups.review.length} to review
         </span>
         <div className="ml-auto flex items-center gap-2">
@@ -879,12 +883,15 @@ export default function PlannerView({
       {typeFilter === "todo" ? (
         todoSection
       ) : (
+        // min-w-0 on the columns: a grid item defaults to its content's
+        // min-content width, which a long entry title (truncated, so unbreakable)
+        // pushed past the phone viewport.
         <div className="grid items-start gap-x-10 xl:grid-cols-2">
-          <div>
+          <div className="min-w-0">
             {reviewSection}
             {upcomingSection}
           </div>
-          <div>
+          <div className="min-w-0">
             {toPlanSection}
             {typeFilter === "all" && todoSection}
           </div>

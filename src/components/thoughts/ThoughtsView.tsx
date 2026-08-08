@@ -272,7 +272,7 @@ export default function ThoughtsView({
   };
 
   return (
-    <div className="w-full flex-1 px-4 py-8 sm:px-6">
+    <div className="w-full flex-1 px-4 py-6 pb-28 sm:px-6 desk:pb-8">
       {/* header */}
       <div className="flex items-baseline gap-2.5">
         <h1 className="title-lg">Thoughts</h1>
@@ -427,7 +427,7 @@ export default function ThoughtsView({
             value={filterTime}
             onChange={(e) => setFilterTime(e.target.value as TimeFilter)}
             aria-label="Filter by time"
-            className={`${inputClass} ml-auto`}
+            className={`${inputClass} sm:ml-auto`}
           >
             <option value="all">All time</option>
             <option value="today">Today</option>

@@ -164,7 +164,7 @@ export default function JournalView({
   const todayKey = toDateKey(new Date());
 
   return (
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 sm:px-6">
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 pb-28 sm:px-6 desk:pb-8">
       <h1 className="title-lg">Journal</h1>
 
       {/* stats */}

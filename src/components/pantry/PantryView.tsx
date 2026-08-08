@@ -186,7 +186,7 @@ export default function PantryView({
   // ----- render -----
 
   return (
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 sm:px-6">
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 pb-28 sm:px-6 desk:pb-8">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="title-lg">Pantry</h1>
         <span className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-3 py-1 text-sm text-neutral-200">
