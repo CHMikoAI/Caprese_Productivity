@@ -10,12 +10,14 @@ import {
   type Ingredient,
   type Salad,
 } from "@/lib/rewards";
+import { PARTNER_NOTE_MIN } from "@/lib/types";
 import type {
   Category,
   Entry,
   EntryStatus,
   EntryType,
   JournalEntry,
+  PartnerGoal,
   Pillar,
   Thought,
   ThoughtSource,
@@ -39,7 +41,14 @@ function refreshPlanning() {
 // ---------- rewards ----------
 
 type GrantRow = {
-  source: "journal" | "task" | "goal" | "journal_streak" | "todo_streak";
+  source:
+    | "journal"
+    | "task"
+    | "goal"
+    | "journal_streak"
+    | "todo_streak"
+    | "partner_goal"
+    | "partner_week";
   source_key: string;
   picks: number;
 };
@@ -282,6 +291,218 @@ export async function deleteJournalEntry(id: string): Promise<void> {
   const { error } = await db().from("journal_entries").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/journal");
+}
+
+// ---------- partner (weekly goals) ----------
+
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+function weekKey(value: string): string {
+  if (!DATE_KEY.test(value)) throw new Error("Invalid week.");
+  return value;
+}
+
+/** Position a new goal after the ones already set for that week. */
+async function nextPartnerPosition(weekStart: string): Promise<number> {
+  const { count } = await db()
+    .from("partner_goals")
+    .select("*", { count: "exact", head: true })
+    .eq("week_start", weekStart);
+  return count ?? 0;
+}
+
+export async function createPartnerGoal(
+  weekStart: string,
+  title: string,
+): Promise<PartnerGoal> {
+  const week = weekKey(weekStart);
+  const clean = title.trim();
+  if (!clean) throw new Error("A goal needs a title.");
+  const { data, error } = await db()
+    .from("partner_goals")
+    .insert({
+      week_start: week,
+      title: clean.slice(0, 200),
+      position: await nextPartnerPosition(week),
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/partner");
+  return data;
+}
+
+/** Rename a goal and/or revise its debrief (difficulty + note). */
+export async function updatePartnerGoal(
+  id: string,
+  patch: { title?: string; notes?: string | null; difficulty?: number | null },
+): Promise<PartnerGoal> {
+  const clean: {
+    title?: string;
+    notes?: string | null;
+    difficulty?: number | null;
+  } = {};
+  if (patch.title !== undefined) {
+    const title = patch.title.trim();
+    if (!title) throw new Error("A goal needs a title.");
+    clean.title = title.slice(0, 200);
+  }
+  if (patch.notes !== undefined) {
+    clean.notes = patch.notes?.trim() ? patch.notes.trim().slice(0, 4000) : null;
+  }
+  if (patch.difficulty !== undefined) {
+    clean.difficulty = patch.difficulty == null ? null : difficulty(patch.difficulty);
+  }
+  const { data, error } = await db()
+    .from("partner_goals")
+    .update(clean)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/partner");
+  return data;
+}
+
+function difficulty(value: number): number {
+  if (!Number.isInteger(value) || value < 1 || value > 5) {
+    throw new Error("Difficulty runs from 1 to 5.");
+  }
+  return value;
+}
+
+/**
+ * Close a goal together with its debrief — a goal never counts as done without
+ * one (the database enforces the same pairing). Pays picks for the goal, plus a
+ * bonus once every goal of that week is closed. The goal id and the week key are
+ * the ledger keys, so reopening and closing again never pays twice.
+ */
+export async function completePartnerGoal(
+  id: string,
+  debrief: { difficulty: number; notes: string },
+): Promise<{
+  goal: PartnerGoal;
+  picksAwarded: number;
+  weekBonus: number;
+  weekComplete: boolean;
+}> {
+  const notes = debrief.notes.trim();
+  if (notes.length < PARTNER_NOTE_MIN) {
+    throw new Error("Add a short note before closing this goal.");
+  }
+  const sb = db();
+  const { data, error } = await sb
+    .from("partner_goals")
+    .update({
+      notes: notes.slice(0, 4000),
+      difficulty: difficulty(debrief.difficulty),
+      done_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/partner");
+
+  const goal: PartnerGoal = data;
+  const picksAwarded = await grantPicks([
+    { source: "partner_goal", source_key: id, picks: PICKS_FOR.partnerGoal },
+  ]);
+
+  // Every goal of the week closed? That pays the week bonus, once per week.
+  const { data: week } = await sb
+    .from("partner_goals")
+    .select("done_at")
+    .eq("week_start", goal.week_start);
+  const weekComplete = Boolean(
+    week && week.length > 0 && week.every((g) => g.done_at),
+  );
+  const weekBonus = weekComplete
+    ? await grantPicks([
+        {
+          source: "partner_week",
+          source_key: goal.week_start,
+          picks: PICKS_FOR.partnerWeek,
+        },
+      ])
+    : 0;
+
+  return { goal, picksAwarded: picksAwarded + weekBonus, weekBonus, weekComplete };
+}
+
+/** Reopen a closed goal. The debrief stays — it was still true. */
+export async function reopenPartnerGoal(id: string): Promise<PartnerGoal> {
+  const { data, error } = await db()
+    .from("partner_goals")
+    .update({ done_at: null })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/partner");
+  return data;
+}
+
+/** The one thing to carry forward from a week. */
+export async function savePartnerTakeaway(
+  weekStart: string,
+  takeaway: string,
+): Promise<void> {
+  const week = weekKey(weekStart);
+  const clean = takeaway.trim();
+  const { error } = await db()
+    .from("partner_weeks")
+    .upsert(
+      {
+        week_start: week,
+        takeaway: clean ? clean.slice(0, 2000) : null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "week_start" },
+    );
+  if (error) throw new Error(error.message);
+  revalidatePath("/partner");
+}
+
+export async function deletePartnerGoal(id: string): Promise<void> {
+  const { error } = await db().from("partner_goals").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/partner");
+}
+
+/**
+ * Carry a week's goals over to another week: same titles, fresh start (no
+ * debrief, not done). Used to start a week from the last one in a single tap.
+ */
+export async function repeatPartnerWeek(
+  fromWeek: string,
+  toWeek: string,
+): Promise<PartnerGoal[]> {
+  const from = weekKey(fromWeek);
+  const to = weekKey(toWeek);
+  const sb = db();
+  const { data: source, error } = await sb
+    .from("partner_goals")
+    .select("title, position")
+    .eq("week_start", from)
+    .order("position");
+  if (error) throw new Error(error.message);
+  if (!source || source.length === 0) return [];
+
+  const base = await nextPartnerPosition(to);
+  const { data, error: insertError } = await sb
+    .from("partner_goals")
+    .insert(
+      source.map((goal, i) => ({
+        week_start: to,
+        title: goal.title,
+        position: base + i,
+      })),
+    )
+    .select();
+  if (insertError) throw new Error(insertError.message);
+  revalidatePath("/partner");
+  return data ?? [];
 }
 
 // ---------- thoughts ----------

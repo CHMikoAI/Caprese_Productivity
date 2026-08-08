@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookText, CalendarDays, FolderKanban, Lightbulb } from "lucide-react";
+import { BookText, CalendarDays, FolderKanban, Heart, Lightbulb } from "lucide-react";
 
 const TABS = [
   { href: "/calendar", label: "Calendar", Icon: CalendarDays },
   { href: "/planner", label: "Planner", Icon: FolderKanban },
   { href: "/thoughts", label: "Thoughts", Icon: Lightbulb },
   { href: "/journal", label: "Journal", Icon: BookText },
+  { href: "/partner", label: "Partner", Icon: Heart },
 ] as const;
 
 /**

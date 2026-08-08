@@ -33,6 +33,8 @@ export const PICKS_FOR = {
   goal: 3,
   journalStreak: 2,
   todoBatch: 1,
+  partnerGoal: 1,
+  partnerWeek: 2,
 } as const;
 
 /** A streak bonus is paid every this many consecutive journal days. */

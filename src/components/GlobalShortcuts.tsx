@@ -13,6 +13,7 @@ const SECTIONS: { title: string; items: [string, string][] }[] = [
       ["2", "Planner"],
       ["3", "Journal"],
       ["4", "Pantry"],
+      ["5", "Partner"],
       ["?", "This overview"],
       ["Esc", "Close dialogs"],
     ],
@@ -36,9 +37,10 @@ const SECTIONS: { title: string; items: [string, string][] }[] = [
     ],
   },
   {
-    title: "Journal & Pantry",
+    title: "Journal, Partner & Pantry",
     items: [
       ["N", "Write today's line (Journal)"],
+      ["N", "Add a weekly goal (Partner)"],
       ["D", "Draw a card (Pantry)"],
     ],
   },
@@ -54,6 +56,7 @@ export default function GlobalShortcuts() {
     "2": () => router.push("/planner"),
     "3": () => router.push("/journal"),
     "4": () => router.push("/pantry"),
+    "5": () => router.push("/partner"),
     "?": () => setHelpOpen(true),
   });
 

@@ -50,6 +50,46 @@ export type JournalEntry = {
   content: string;
 };
 
+// A weekly goal on the Partner track ("find a life partner"). Goals are
+// independent of each other and belong to exactly one week via `week_start`
+// (that week's Monday, local time). A goal can only be closed together with
+// its debrief: `difficulty` (how hard it felt) and `notes` (what worked, what
+// got in the way) — the database enforces that pairing.
+export type PartnerGoal = {
+  id: string;
+  week_start: string; // yyyy-mm-dd, always a Monday
+  title: string;
+  notes: string | null;
+  difficulty: number | null; // 1-5, required to close the goal
+  done_at: string | null; // null = still open
+  position: number; // order within the week
+  created_at: string;
+};
+
+/** The one thing carried forward from a finished week. */
+export type PartnerWeek = {
+  week_start: string;
+  takeaway: string | null;
+  updated_at: string;
+};
+
+/** Beyond this many goals a week the UI nudges towards focus (no hard cap). */
+export const PARTNER_GOALS_SWEET_SPOT = 3;
+
+/** How hard a goal felt. Low numbers are what you want — it got easier. */
+export const PARTNER_DIFFICULTIES = [1, 2, 3, 4, 5] as const;
+
+export const PARTNER_DIFFICULTY_LABEL: Record<number, string> = {
+  1: "Easy",
+  2: "Ok",
+  3: "Tough",
+  4: "Hard",
+  5: "Very hard",
+};
+
+/** A debrief needs at least this many characters to close a goal. */
+export const PARTNER_NOTE_MIN = 3;
+
 // A captured thought — a voice note (transcribed) or typed text. It lives in the
 // "Open" inbox until triaged; triaging tags it to a project (for filtering) or
 // just marks it done. A thought never leaves the full list once captured.

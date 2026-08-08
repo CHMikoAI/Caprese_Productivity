@@ -71,6 +71,47 @@ create index if not exists thoughts_triaged_idx on thoughts (triaged);
 create index if not exists thoughts_archived_at_idx on thoughts (archived_at);
 create index if not exists thoughts_created_at_idx on thoughts (created_at desc);
 
+-- Partner: the "find a life partner" track, run week by week. Every week gets
+-- two or three small, independent goals (week_start is that week's Monday). A
+-- goal can only be closed with a debrief — how hard it felt (difficulty 1-5)
+-- and a short note on what worked or got in the way; the check constraint
+-- enforces that. Closing one pays picks ('partner_goal'), closing every goal of
+-- a week pays a bonus ('partner_week').
+create table if not exists partner_goals (
+  id uuid primary key default gen_random_uuid(),
+  week_start date not null,            -- Monday of the week the goal belongs to
+  title text not null,
+  notes text,                          -- how it went: what worked, what didn't
+  difficulty smallint check (difficulty between 1 and 5),  -- how hard it felt
+  done_at timestamptz,                 -- null = still open
+  position int not null default 0,     -- order within the week
+  created_at timestamptz not null default now()
+);
+
+-- `add column if not exists` for databases created before difficulty existed.
+alter table partner_goals
+  add column if not exists difficulty smallint
+    check (difficulty between 1 and 5);
+
+alter table partner_goals drop constraint if exists partner_goals_done_needs_debrief;
+alter table partner_goals add constraint partner_goals_done_needs_debrief
+  check (
+    done_at is null
+    or (difficulty is not null and notes is not null and btrim(notes) <> '')
+  );
+
+create index if not exists partner_goals_week_idx
+  on partner_goals (week_start desc, position);
+
+-- One row per tracked week, holding the week's takeaway (the one thing to carry
+-- forward). Written once the week is finished; optional.
+create table if not exists partner_weeks (
+  week_start date primary key,
+  takeaway text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 -- ---------------------------------------------------------------------------
 -- Pantry gamification: picks are earned via journal/tasks/goals, spent on
 -- card draws; drawn ingredients are crafted into caprese salads.
@@ -86,12 +127,20 @@ create table if not exists salads (
 -- idempotent: re-completing a task or re-saving a journal day never pays twice.
 create table if not exists reward_grants (
   id uuid primary key default gen_random_uuid(),
-  source text not null check (source in ('journal', 'task', 'goal', 'journal_streak', 'todo_streak')),
+  source text not null check (source in ('journal', 'task', 'goal', 'journal_streak',
+                                        'todo_streak', 'partner_goal', 'partner_week')),
   source_key text not null,
   picks int not null check (picks > 0),
   created_at timestamptz not null default now(),
   unique (source, source_key)
 );
+
+-- `create table if not exists` leaves an existing table's check untouched, so
+-- restate the source list for databases created before a source was added.
+alter table reward_grants drop constraint if exists reward_grants_source_check;
+alter table reward_grants add constraint reward_grants_source_check
+  check (source in ('journal', 'task', 'goal', 'journal_streak', 'todo_streak',
+                    'partner_goal', 'partner_week'));
 
 -- One row per drawn card; salad_id is set when the ingredient is spent.
 create table if not exists card_draws (
@@ -200,6 +249,8 @@ alter table categories enable row level security;
 alter table entries enable row level security;
 alter table journal_entries enable row level security;
 alter table thoughts enable row level security;
+alter table partner_goals enable row level security;
+alter table partner_weeks enable row level security;
 alter table salads enable row level security;
 alter table reward_grants enable row level security;
 alter table card_draws enable row level security;
