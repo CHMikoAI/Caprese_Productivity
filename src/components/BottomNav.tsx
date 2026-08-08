@@ -26,10 +26,12 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-40 hidden border-t border-neutral-800/80 bg-neutral-950/95 backdrop-blur phone:block"
-      // Sit the icons right down at the bottom: reserve well under the full
-      // home-indicator inset so there's only a slim clearance below the labels
-      // (~10px on iPhone), not the full ~34px "dead" strip iOS reserves.
+      className="fixed inset-x-0 bottom-0 z-40 hidden border-t border-neutral-800/80 bg-neutral-950/95 backdrop-blur phone:block phone:pt-1.5"
+      // Sit the icons near the bottom, but not cramped against the top edge:
+      // pt-1.5 gives them a little air under the border, while the bottom
+      // padding reserves well under the full home-indicator inset so there's
+      // only a slim clearance below the labels (~10px on iPhone), not the full
+      // ~34px "dead" strip iOS reserves. `AppLayout` reserves both.
       style={{
         paddingBottom: "max(0.25rem, calc(env(safe-area-inset-bottom) - 1.5rem))",
       }}
