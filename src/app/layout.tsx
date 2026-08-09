@@ -31,7 +31,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0a",
+  themeColor: "#000000",
   width: "device-width",
   initialScale: 1,
   // A native-app feel means no pinch- or focus-zoom: the layout is already
@@ -51,8 +51,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
+    // The document itself never scrolls — the app shell owns a single scroll
+    // area (see `(app)/layout.tsx`). That is what keeps the tab bar planted:
+    // while a page scrolls the document, mobile Safari collapses and expands
+    // its own bottom toolbar, and anything anchored to the viewport bottom
+    // rides along with it — on scrolling pages only, so the bar sat at a
+    // different height on the calendar than on the planner.
     <html lang="en" className="h-full antialiased">
-      <body className="flex min-h-full flex-col font-sans">
+      <body className="flex h-full flex-col overflow-hidden font-sans">
         {children}
         <ServiceWorker />
       </body>

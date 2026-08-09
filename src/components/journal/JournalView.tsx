@@ -16,6 +16,7 @@ import {
   WEEKDAYS_SHORT,
 } from "@/lib/dates";
 import { PILLAR_META } from "@/lib/pillarIcons";
+import { scrollAppToTop } from "@/lib/scroll";
 import { STREAK_MILESTONE } from "@/lib/rewards";
 import { useShortcuts } from "@/lib/useShortcuts";
 import { PILLARS, type JournalEntry, type Pillar } from "@/lib/types";
@@ -275,7 +276,7 @@ export default function JournalView({
                 const label = PILLAR_META[entry.pillar].label;
                 const openEdit = () => {
                   setDateKey(entry.entry_date);
-                  window.scrollTo({ top: 0, behavior: "smooth" });
+                  scrollAppToTop();
                 };
                 return (
                   <li

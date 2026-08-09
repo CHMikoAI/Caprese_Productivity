@@ -26,23 +26,22 @@ export default async function AppLayout({
   }
 
   return (
-    <>
+    // A fixed shell: bar, scroll area, bar. Only `main` scrolls, so the tab bar
+    // is part of the layout rather than floating at the viewport bottom — it
+    // sits at exactly the same height on every page, and mobile Safari never
+    // slides it around with its own toolbar.
+    <div className="flex h-full flex-col">
       <TopNav
         pantryPicks={picks}
         saladsReady={saladsReady}
         saladArt={artSources().salad}
       />
-      {/* The bottom tab bar is `position: fixed` at the viewport bottom — that
-          pins it to the true screen edge in an iOS PWA and its background fills
-          the home-indicator zone (no dead black strip). Reserve its height
-          (3.5rem incl. the padding above the icons) plus that inset so content
-          isn't hidden behind it. */}
-      <main className="flex min-h-0 flex-1 flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] desk:pb-0">
+      <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
         {children}
       </main>
       <BottomNav />
       <CaptureFab />
       <GlobalShortcuts />
-    </>
+    </div>
   );
 }
