@@ -4,13 +4,14 @@ import { revalidatePath } from "next/cache";
 import { getSupabase } from "@/lib/supabase";
 import { sanitizeHtml } from "@/lib/sanitize";
 import {
+  PARTNER_OUTCOME_PICKS,
   PICKS_FOR,
   TODO_BATCH,
   streakMilestoneDates,
   type Ingredient,
   type Salad,
 } from "@/lib/rewards";
-import { PARTNER_NOTE_MIN } from "@/lib/types";
+import { PARTNER_NOTE_MIN, PARTNER_OUTCOMES } from "@/lib/types";
 import type {
   Category,
   Entry,
@@ -18,6 +19,7 @@ import type {
   EntryType,
   JournalEntry,
   PartnerGoal,
+  PartnerOutcome,
   Pillar,
   Thought,
   ThoughtSource,
@@ -335,12 +337,18 @@ export async function createPartnerGoal(
 /** Rename a goal and/or revise its debrief (difficulty + note). */
 export async function updatePartnerGoal(
   id: string,
-  patch: { title?: string; notes?: string | null; difficulty?: number | null },
+  patch: {
+    title?: string;
+    notes?: string | null;
+    difficulty?: number | null;
+    outcome?: PartnerOutcome | null;
+  },
 ): Promise<PartnerGoal> {
   const clean: {
     title?: string;
     notes?: string | null;
     difficulty?: number | null;
+    outcome?: PartnerOutcome | null;
   } = {};
   if (patch.title !== undefined) {
     const title = patch.title.trim();
@@ -352,6 +360,12 @@ export async function updatePartnerGoal(
   }
   if (patch.difficulty !== undefined) {
     clean.difficulty = patch.difficulty == null ? null : difficulty(patch.difficulty);
+  }
+  if (patch.outcome !== undefined) {
+    if (patch.outcome !== null && !PARTNER_OUTCOMES.includes(patch.outcome)) {
+      throw new Error("Unknown outcome.");
+    }
+    clean.outcome = patch.outcome;
   }
   const { data, error } = await db()
     .from("partner_goals")
@@ -379,7 +393,7 @@ function difficulty(value: number): number {
  */
 export async function completePartnerGoal(
   id: string,
-  debrief: { difficulty: number; notes: string },
+  debrief: { outcome: PartnerOutcome; difficulty: number; notes: string },
 ): Promise<{
   goal: PartnerGoal;
   picksAwarded: number;
@@ -390,12 +404,16 @@ export async function completePartnerGoal(
   if (notes.length < PARTNER_NOTE_MIN) {
     throw new Error("Add a short note before closing this goal.");
   }
+  if (!PARTNER_OUTCOMES.includes(debrief.outcome)) {
+    throw new Error("Pick how the goal went.");
+  }
   const sb = db();
   const { data, error } = await sb
     .from("partner_goals")
     .update({
       notes: notes.slice(0, 4000),
       difficulty: difficulty(debrief.difficulty),
+      outcome: debrief.outcome,
       done_at: new Date().toISOString(),
     })
     .eq("id", id)
@@ -405,17 +423,23 @@ export async function completePartnerGoal(
   revalidatePath("/partner");
 
   const goal: PartnerGoal = data;
-  const picksAwarded = await grantPicks([
-    { source: "partner_goal", source_key: id, picks: PICKS_FOR.partnerGoal },
-  ]);
+  // The goal id is the ledger key, so the first close sets the payout —
+  // revising the outcome afterwards never tops it up.
+  const picks = PARTNER_OUTCOME_PICKS[debrief.outcome];
+  const picksAwarded =
+    picks > 0
+      ? await grantPicks([{ source: "partner_goal", source_key: id, picks }])
+      : 0;
 
-  // Every goal of the week closed? That pays the week bonus, once per week.
+  // A week where every goal was at least partly achieved pays the bonus, once.
   const { data: week } = await sb
     .from("partner_goals")
-    .select("done_at")
+    .select("done_at, outcome")
     .eq("week_start", goal.week_start);
   const weekComplete = Boolean(
-    week && week.length > 0 && week.every((g) => g.done_at),
+    week &&
+      week.length > 0 &&
+      week.every((g) => g.done_at && g.outcome !== "missed"),
   );
   const weekBonus = weekComplete
     ? await grantPicks([

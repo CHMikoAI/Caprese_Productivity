@@ -73,31 +73,45 @@ create index if not exists thoughts_created_at_idx on thoughts (created_at desc)
 
 -- Partner: the "find a life partner" track, run week by week. Every week gets
 -- two or three small, independent goals (week_start is that week's Monday). A
--- goal can only be closed with a debrief — how hard it felt (difficulty 1-5)
--- and a short note on what worked or got in the way; the check constraint
--- enforces that. Closing one pays picks ('partner_goal'), closing every goal of
--- a week pays a bonus ('partner_week').
+-- goal can only be closed with a debrief — how it went (outcome), how hard it
+-- felt (difficulty 1-5) and a short note; the check constraint enforces that.
+-- Picks follow the outcome (achieved 2, partial 1, missed 0, see
+-- 'partner_goal'); a week where every goal was at least partly achieved pays a
+-- bonus ('partner_week').
 create table if not exists partner_goals (
   id uuid primary key default gen_random_uuid(),
   week_start date not null,            -- Monday of the week the goal belongs to
   title text not null,
   notes text,                          -- how it went: what worked, what didn't
   difficulty smallint check (difficulty between 1 and 5),  -- how hard it felt
+  outcome text check (outcome in ('achieved', 'partial', 'missed')),
   done_at timestamptz,                 -- null = still open
   position int not null default 0,     -- order within the week
   created_at timestamptz not null default now()
 );
 
--- `add column if not exists` for databases created before difficulty existed.
+-- `add column if not exists` for databases created before these columns did.
 alter table partner_goals
   add column if not exists difficulty smallint
     check (difficulty between 1 and 5);
+alter table partner_goals
+  add column if not exists outcome text
+    check (outcome in ('achieved', 'partial', 'missed'));
+
+-- Goals closed before outcomes existed counted as fully achieved.
+update partner_goals set outcome = 'achieved'
+where done_at is not null and outcome is null;
 
 alter table partner_goals drop constraint if exists partner_goals_done_needs_debrief;
 alter table partner_goals add constraint partner_goals_done_needs_debrief
   check (
     done_at is null
-    or (difficulty is not null and notes is not null and btrim(notes) <> '')
+    or (
+      outcome is not null
+      and difficulty is not null
+      and notes is not null
+      and btrim(notes) <> ''
+    )
   );
 
 create index if not exists partner_goals_week_idx

@@ -1,4 +1,5 @@
 import { addDays, toDateKey, fromDateKey } from "@/lib/dates";
+import type { PartnerOutcome } from "@/lib/types";
 
 export const INGREDIENTS = ["tomato", "basil", "oil", "mozzarella"] as const;
 export type Ingredient = (typeof INGREDIENTS)[number];
@@ -33,9 +34,18 @@ export const PICKS_FOR = {
   goal: 3,
   journalStreak: 2,
   todoBatch: 1,
-  partnerGoal: 1,
-  partnerWeek: 2,
+  partnerWeek: 1,
 } as const;
+
+/**
+ * Closing a weekly Partner goal pays by how it went. A missed goal pays
+ * nothing — it still counts as reflected on, just not as progress.
+ */
+export const PARTNER_OUTCOME_PICKS: Record<PartnerOutcome, number> = {
+  achieved: 2,
+  partial: 1,
+  missed: 0,
+};
 
 /** A streak bonus is paid every this many consecutive journal days. */
 export const STREAK_MILESTONE = 10;

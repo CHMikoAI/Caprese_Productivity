@@ -55,15 +55,25 @@ export type JournalEntry = {
 // (that week's Monday, local time). A goal can only be closed together with
 // its debrief: `difficulty` (how hard it felt) and `notes` (what worked, what
 // got in the way) — the database enforces that pairing.
+export const PARTNER_OUTCOMES = ["achieved", "partial", "missed"] as const;
+export type PartnerOutcome = (typeof PARTNER_OUTCOMES)[number];
+
 export type PartnerGoal = {
   id: string;
   week_start: string; // yyyy-mm-dd, always a Monday
   title: string;
   notes: string | null;
   difficulty: number | null; // 1-5, required to close the goal
+  outcome: PartnerOutcome | null; // how it went; required to close the goal
   done_at: string | null; // null = still open
   position: number; // order within the week
   created_at: string;
+};
+
+export const PARTNER_OUTCOME_LABEL: Record<PartnerOutcome, string> = {
+  achieved: "Achieved",
+  partial: "Partly",
+  missed: "Missed",
 };
 
 /** The one thing carried forward from a finished week. */

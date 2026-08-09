@@ -9,6 +9,7 @@ import {
   Plus,
   RotateCcw,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   completePartnerGoal,
@@ -29,14 +30,18 @@ import {
   toDateKey,
   weekRangeLabel,
 } from "@/lib/dates";
-import { PICKS_FOR } from "@/lib/rewards";
+import { PARTNER_OUTCOME_PICKS, PICKS_FOR } from "@/lib/rewards";
+import { scrollAppToTop } from "@/lib/scroll";
 import { useShortcuts } from "@/lib/useShortcuts";
 import {
   PARTNER_DIFFICULTIES,
   PARTNER_DIFFICULTY_LABEL,
   PARTNER_GOALS_SWEET_SPOT,
   PARTNER_NOTE_MIN,
+  PARTNER_OUTCOMES,
+  PARTNER_OUTCOME_LABEL,
   type PartnerGoal,
+  type PartnerOutcome,
   type PartnerWeek,
 } from "@/lib/types";
 
@@ -96,6 +101,7 @@ export default function PartnerView({
   const [editTitle, setEditTitle] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editLevel, setEditLevel] = useState<number | null>(null);
+  const [editOutcome, setEditOutcome] = useState<PartnerOutcome | null>(null);
   const addRef = useRef<HTMLInputElement>(null);
 
   useShortcuts({ n: () => addRef.current?.focus() });
@@ -119,6 +125,8 @@ export default function PartnerView({
   const weekGoals = useMemo(() => byWeek.get(week) ?? [], [byWeek, week]);
   const weekDone = weekGoals.filter((g) => g.done_at).length;
   const allDone = weekGoals.length > 0 && weekDone === weekGoals.length;
+  // The week bonus needs every goal at least partly achieved.
+  const weekClean = allDone && weekGoals.every((g) => g.outcome !== "missed");
   const previousWeek = shiftWeek(week, -1);
   const canRepeat = (byWeek.get(previousWeek) ?? []).length > 0;
 
@@ -140,8 +148,10 @@ export default function PartnerView({
 
   const stats = useMemo(() => {
     const thisWeek = byWeek.get(currentWeek) ?? [];
+    // A missed goal is resolved, but it isn't progress — it neither counts as
+    // done nor keeps a streak alive.
     const hasDone = (key: string) =>
-      (byWeek.get(key) ?? []).some((g) => g.done_at);
+      (byWeek.get(key) ?? []).some((g) => g.done_at && g.outcome !== "missed");
 
     // Consecutive weeks with at least one goal closed. The running week only
     // breaks the streak once it is over, so start from last week if it's empty.
@@ -178,7 +188,7 @@ export default function PartnerView({
     return {
       thisWeekTotal: thisWeek.length,
       thisWeekDone: thisWeek.filter((g) => g.done_at).length,
-      goalsDone: goals.filter((g) => g.done_at).length,
+      goalsDone: goals.filter((g) => g.done_at && g.outcome !== "missed").length,
       streak,
       level,
     };
@@ -219,15 +229,19 @@ export default function PartnerView({
     setEditTitle(goal.title);
     setEditNotes(goal.notes ?? "");
     setEditLevel(goal.difficulty);
+    setEditOutcome(goal.outcome);
   }
 
   const debriefReady =
-    editLevel !== null && editNotes.trim().length >= PARTNER_NOTE_MIN;
+    editOutcome !== null &&
+    editLevel !== null &&
+    editNotes.trim().length >= PARTNER_NOTE_MIN;
 
   /** Close a goal: the debrief is saved with it, never separately. */
   async function closeGoal(goal: PartnerGoal) {
     if (!debriefReady || busy) return;
     const level = editLevel as number;
+    const outcome = editOutcome as PartnerOutcome;
     const notes = editNotes.trim();
     const title = editTitle.trim() || goal.title;
     setBusy(true);
@@ -236,11 +250,13 @@ export default function PartnerView({
       title,
       notes,
       difficulty: level,
+      outcome,
       done_at: new Date().toISOString(),
     });
     try {
       if (title !== goal.title) await updatePartnerGoal(goal.id, { title });
       const { picksAwarded, weekBonus } = await completePartnerGoal(goal.id, {
+        outcome,
         difficulty: level,
         notes,
       });
@@ -248,7 +264,7 @@ export default function PartnerView({
       if (picksAwarded > 0) {
         showReward(
           picksAwarded,
-          weekBonus > 0 ? "Week complete — every goal done!" : undefined,
+          weekBonus > 0 ? "Week complete — nothing missed!" : undefined,
         );
       }
     } catch {
@@ -256,6 +272,7 @@ export default function PartnerView({
         title: goal.title,
         notes: goal.notes,
         difficulty: goal.difficulty,
+        outcome: goal.outcome,
         done_at: goal.done_at,
       });
       showError("Could not close the goal.");
@@ -268,28 +285,44 @@ export default function PartnerView({
     const title = editTitle.trim() || goal.title;
     const notes = editNotes.trim();
     const level = editLevel;
+    const outcome = editOutcome;
     // A closed goal must keep its debrief — the database enforces the pairing.
-    if (goal.done_at && (level === null || notes.length < PARTNER_NOTE_MIN)) {
-      showError("A closed goal keeps its rating and note.");
+    if (
+      goal.done_at &&
+      (level === null || outcome === null || notes.length < PARTNER_NOTE_MIN)
+    ) {
+      showError("A closed goal keeps its outcome, rating and note.");
       return;
     }
     setOpenId(null);
     if (
       title === goal.title &&
       notes === (goal.notes ?? "") &&
-      level === goal.difficulty
+      level === goal.difficulty &&
+      outcome === goal.outcome
     ) {
       return;
     }
-    patchLocal(goal.id, { title, notes: notes || null, difficulty: level });
+    patchLocal(goal.id, {
+      title,
+      notes: notes || null,
+      difficulty: level,
+      outcome,
+    });
     try {
-      await updatePartnerGoal(goal.id, { title, notes, difficulty: level });
+      await updatePartnerGoal(goal.id, {
+        title,
+        notes,
+        difficulty: level,
+        outcome,
+      });
       router.refresh();
     } catch {
       patchLocal(goal.id, {
         title: goal.title,
         notes: goal.notes,
         difficulty: goal.difficulty,
+        outcome: goal.outcome,
       });
       showError("Could not save the goal.");
     }
@@ -377,7 +410,7 @@ export default function PartnerView({
   return (
     // pb clears the floating capture button on phones, so the last card never
     // sits under it.
-    <div className="mx-auto w-full max-w-3xl flex-1 px-4 py-6 pb-28 sm:px-6 desk:pb-8">
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 pb-28 sm:px-6 desk:pb-8">
       <h1 className="title-lg">Partner</h1>
 
       {/* stats */}
@@ -482,14 +515,26 @@ export default function PartnerView({
                       aria-label={done ? "Reopen goal" : "Close goal"}
                       className="flex h-11 w-11 shrink-0 items-center justify-center"
                     >
+                      {/* The mark carries the outcome: filled for achieved,
+                          half for partly, a cross for missed. */}
                       <span
                         className={`flex h-[26px] w-[26px] items-center justify-center rounded-full border-[1.5px] transition-colors ${
-                          done
-                            ? "border-accent bg-accent text-white"
-                            : "border-neutral-600 text-transparent"
+                          !done
+                            ? "border-neutral-600 text-transparent"
+                            : goal.outcome === "achieved"
+                              ? "border-accent bg-accent text-white"
+                              : goal.outcome === "partial"
+                                ? "border-accent text-accent"
+                                : "border-neutral-600 text-neutral-500"
                         }`}
                       >
-                        <Check className="h-4 w-4" strokeWidth={3} />
+                        {done && goal.outcome === "missed" ? (
+                          <X className="h-4 w-4" strokeWidth={3} />
+                        ) : done && goal.outcome === "partial" ? (
+                          <span className="h-2 w-2 rounded-full bg-accent" />
+                        ) : (
+                          <Check className="h-4 w-4" strokeWidth={3} />
+                        )}
                       </span>
                     </button>
 
@@ -507,6 +552,17 @@ export default function PartnerView({
                       </span>
                       {!open && done && (
                         <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                          {goal.outcome && (
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                goal.outcome === "missed"
+                                  ? "bg-neutral-800 text-neutral-400"
+                                  : "bg-accent/15 text-accent"
+                              }`}
+                            >
+                              {PARTNER_OUTCOME_LABEL[goal.outcome]}
+                            </span>
+                          )}
                           {goal.difficulty && (
                             <span className="rounded-full bg-neutral-800 px-2 py-0.5 text-[11px] font-medium text-neutral-300">
                               {goal.difficulty} ·{" "}
@@ -537,6 +593,38 @@ export default function PartnerView({
                         aria-label="Goal"
                         className="field"
                       />
+
+                      <div className="mt-4 section-label">How did it go?</div>
+                      <div className="mt-1.5 flex gap-1.5">
+                        {PARTNER_OUTCOMES.map((outcome) => {
+                          const picks = PARTNER_OUTCOME_PICKS[outcome];
+                          const active = editOutcome === outcome;
+                          return (
+                            <button
+                              key={outcome}
+                              type="button"
+                              onClick={() => setEditOutcome(outcome)}
+                              aria-pressed={active}
+                              className={`flex flex-1 flex-col items-center gap-0.5 rounded-xl px-2 py-2 transition-colors ${
+                                active
+                                  ? "bg-accent text-white"
+                                  : "bg-neutral-800 text-neutral-300"
+                              }`}
+                            >
+                              <span className="text-sm font-semibold">
+                                {PARTNER_OUTCOME_LABEL[outcome]}
+                              </span>
+                              <span
+                                className={`text-[11px] tabular-nums ${
+                                  active ? "text-white/75" : "text-neutral-500"
+                                }`}
+                              >
+                                {picks > 0 ? `+${picks} ${picks === 1 ? "pick" : "picks"}` : "no pick"}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
 
                       <div className="mt-4 flex items-baseline justify-between">
                         <span className="section-label">How hard did it feel?</span>
@@ -574,6 +662,11 @@ export default function PartnerView({
                       />
 
                       <div className="mt-3 flex items-center gap-2">
+                        {!done && !debriefReady && (
+                          <p className="min-w-0 flex-1 text-xs text-neutral-500">
+                            Pick an outcome, rate it and write a line.
+                          </p>
+                        )}
                         <button
                           onClick={() => setOpenId(null)}
                           className="ml-auto px-3 py-2 text-sm font-medium text-neutral-400 transition-opacity active:opacity-50"
@@ -595,6 +688,12 @@ export default function PartnerView({
                           >
                             <Check className="h-4 w-4" strokeWidth={3} />
                             Close goal
+                            {editOutcome &&
+                              PARTNER_OUTCOME_PICKS[editOutcome] > 0 && (
+                                <span className="font-normal text-white/75">
+                                  +{PARTNER_OUTCOME_PICKS[editOutcome]}
+                                </span>
+                              )}
                           </button>
                         )}
                       </div>
@@ -649,16 +748,18 @@ export default function PartnerView({
       <p className="mt-2 px-1 text-xs text-neutral-500">
         {weekGoals.length >= PARTNER_GOALS_SWEET_SPOT
           ? "Two or three a week is plenty — depth beats volume."
-          : `Every closed goal pays ${PICKS_FOR.partnerGoal} pick, a fully closed week ${PICKS_FOR.partnerWeek} more.`}
+          : `Achieved pays ${PARTNER_OUTCOME_PICKS.achieved} picks, partly ${PARTNER_OUTCOME_PICKS.partial} — a week with nothing missed ${PICKS_FOR.partnerWeek} more.`}
       </p>
 
       {/* wrap-up: the one thing to carry forward */}
       {showWrapUp && (
-        <div className={`card mt-5 p-4 ${allDone ? "bg-accent/10" : ""}`}>
+        <div className={`card mt-5 p-4 ${weekClean ? "bg-accent/10" : ""}`}>
           <p className="text-sm font-semibold text-neutral-50">
-            {allDone
-              ? `Week complete — all ${weekGoals.length} goals done.`
-              : `Week over — ${weekDone} of ${weekGoals.length} goals done.`}
+            {weekClean
+              ? `Week complete — all ${weekGoals.length} goals at least partly achieved.`
+              : allDone
+                ? `Week closed — ${weekGoals.filter((g) => g.outcome !== "missed").length} of ${weekGoals.length} achieved.`
+                : `Week over — ${weekDone} of ${weekGoals.length} closed.`}
           </p>
           <label className="mt-2.5 block section-label">
             What&apos;s the one thing you take into next week?
@@ -696,7 +797,7 @@ export default function PartnerView({
                     onClick={() => {
                       setWeek(entry.key);
                       setOpenId(null);
-                      window.scrollTo({ top: 0, behavior: "smooth" });
+                      scrollAppToTop();
                     }}
                     className={`flex w-full items-center gap-3 px-3.5 py-3 text-left transition-opacity active:opacity-60 ${
                       active ? "bg-neutral-800 text-neutral-50" : "text-neutral-300"
@@ -710,7 +811,13 @@ export default function PartnerView({
                         <span
                           key={goal.id}
                           className={`h-1.5 w-1.5 rounded-full ${
-                            goal.done_at ? "bg-accent" : "bg-neutral-700"
+                            !goal.done_at
+                              ? "bg-neutral-700"
+                              : goal.outcome === "achieved"
+                                ? "bg-accent"
+                                : goal.outcome === "partial"
+                                  ? "bg-accent/50"
+                                  : "bg-neutral-600"
                           }`}
                         />
                       ))}
