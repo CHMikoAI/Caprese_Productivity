@@ -11,8 +11,10 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#0a0a0a",
-    theme_color: "#0a0a0a",
+    // True black, like the app itself — iOS paints the launch screen in
+    // background_color, so a lighter value flashes a different dark first.
+    background_color: "#000000",
+    theme_color: "#000000",
     categories: ["productivity", "lifestyle"],
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
