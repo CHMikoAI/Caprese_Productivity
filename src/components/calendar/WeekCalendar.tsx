@@ -75,6 +75,12 @@ const MOBILE_MEDIA = "(max-width: 639px)"; // Tailwind's `sm` breakpoint
 const GUTTER_PX = 56; // the w-14 time gutter
 const PAGES_EACH_SIDE = 1;
 const AXIS_LOCK_PX = 8; // finger travel before a swipe commits to one axis
+// A touch on the grid only counts as "tap to create" when the finger barely
+// moved, the grid didn't scroll under it, and the whole thing was over
+// quickly. Without these, every vertical scroll ended in the new-entry dialog.
+const TAP_SLOP_PX = 10; // finger travel a tap may drift
+const TAP_MAX_MS = 500; // longer than this is a press, not a tap
+const SCROLL_QUIET_MS = 350; // a tap this soon after scrolling is a fling stop
 const SWIPE_MS = 260;
 const SWIPE_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
 const SWIPE_TRANSITION = `transform ${SWIPE_MS}ms ${SWIPE_EASE}`;
@@ -207,9 +213,15 @@ export default function WeekCalendar({
   const createDragRef = useRef<{
     dayIndex: number;
     anchorMin: number;
+    startClientX: number;
     startClientY: number;
-    moved: boolean;
+    startedAt: number;
+    startScrollTop: number;
+    moved: boolean; // a pointer drag that sizes the new entry
+    panned: boolean; // the finger travelled — this was a scroll, not a tap
   } | null>(null);
+  /** When the grid last scrolled, so a tap that stops a fling doesn't create. */
+  const lastScrollAtRef = useRef(0);
   const createDragStateRef = useRef<{
     day: number;
     startMin: number;
@@ -800,21 +812,37 @@ export default function WeekCalendar({
     slotIndex: number,
   ) {
     if (e.button !== 0) return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    // Capturing a touch keeps the slot receiving events through a scroll, so
+    // the gesture ends in a pointerup here instead of a pointercancel. Only
+    // pointer devices (which drag to size a new entry) need the capture.
+    if (e.pointerType !== "touch") {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
     createDragRef.current = {
       dayIndex,
       anchorMin: slotIndex * 30,
+      startClientX: e.clientX,
       startClientY: e.clientY,
+      startedAt: performance.now(),
+      startScrollTop: scrollRef.current?.scrollTop ?? 0,
       moved: false,
+      panned: false,
     };
   }
 
   function onSlotPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    const d = createDragRef.current;
+    if (!d) return;
+    if (
+      Math.abs(e.clientX - d.startClientX) > TAP_SLOP_PX ||
+      Math.abs(e.clientY - d.startClientY) > TAP_SLOP_PX
+    ) {
+      d.panned = true;
+    }
     // On phones the grid pages/scrolls under a touch; drag-to-create is a
     // pointer-device affordance (tap still creates at that slot).
     if (e.pointerType === "touch") return;
-    const d = createDragRef.current;
-    if (!d || !colsRef.current) return;
+    if (!colsRef.current) return;
     if (!d.moved) {
       if (Math.abs(e.clientY - d.startClientY) < 5) return;
       d.moved = true;
@@ -843,7 +871,7 @@ export default function WeekCalendar({
   }
 
   function onSlotPointerUp(
-    _e: React.PointerEvent<HTMLButtonElement>,
+    e: React.PointerEvent<HTMLButtonElement>,
     dayIndex: number,
     slotIndex: number,
   ) {
@@ -855,6 +883,7 @@ export default function WeekCalendar({
     setCreateDrag(null);
     if (!d) return;
     if (!d.moved || !sel) {
+      if (e.pointerType === "touch" && !isTap(d)) return;
       openCreateAt(days[dayIndex], slotIndex * 30);
       return;
     }
@@ -867,6 +896,25 @@ export default function WeekCalendar({
         sel.endMin - sel.startMin,
       ),
     });
+  }
+
+  function markScrolled() {
+    lastScrollAtRef.current = performance.now();
+  }
+
+  /**
+   * Did this touch end as a tap? Scrolling the grid drags the finger across
+   * slots and still ends in a pointerup on one of them, so a tap has to have
+   * stayed put, left the scroll position alone, and been quick — and must not
+   * be the tap that catches a fling.
+   */
+  function isTap(d: { startedAt: number; startScrollTop: number; panned: boolean }) {
+    if (d.panned) return false;
+    if (performance.now() - d.startedAt > TAP_MAX_MS) return false;
+    if (performance.now() - lastScrollAtRef.current < SCROLL_QUIET_MS) return false;
+    const sc = scrollRef.current;
+    if (sc && Math.abs(sc.scrollTop - d.startScrollTop) > 2) return false;
+    return true;
   }
 
   function onSlotPointerCancel() {
@@ -1459,6 +1507,7 @@ export default function WeekCalendar({
 
             <div
               ref={scrollRef}
+              onScroll={markScrolled}
               className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
             >
               <div className="flex">
@@ -1482,7 +1531,11 @@ export default function WeekCalendar({
             </div>
           </div>
         ) : (
-          <div ref={scrollRef} className="min-w-0 flex-1 overflow-auto">
+          <div
+            ref={scrollRef}
+            onScroll={markScrolled}
+            className="min-w-0 flex-1 overflow-auto"
+          >
             <div
               style={{
                 minWidth: view === "day" ? 360 : view === "3day" ? 540 : 640,
