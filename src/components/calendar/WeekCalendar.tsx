@@ -316,6 +316,18 @@ export default function WeekCalendar({
     paging && viewportW > 0 ? (viewportW - GUTTER_PX) / daysPerPage : 0;
   const pageWidth = dayWidth * daysPerPage;
   const stripWidth = dayWidth * days.length;
+  // The pager only knows its pixel page width once the scroll port has been
+  // measured, and that cannot happen while another view owns the screen —
+  // coming from the month view there is no measurement yet. Percentages give
+  // the strip the right shape immediately: one page wide per rendered page,
+  // equal columns, parked on the middle page. Without them the columns fell
+  // back to flex-1, so switching out of the month view squeezed every rendered
+  // page onto one screen with no offset: the day headers named the wrong day,
+  // and in the 3-day view they were far too narrow to read.
+  const PAGES = 1 + 2 * PAGES_EACH_SIDE;
+  const stripPercent = `${(days.length / daysPerPage) * 100}%`;
+  const columnPercent = `${100 / days.length}%`;
+  const restingOffset = `translate3d(-${100 / PAGES}%, 0, 0)`;
 
   // ----- phone pager: transform + axis-locked swipe -----
 
@@ -346,7 +358,7 @@ export default function WeekCalendar({
     if (!paging || !pageWidth) return;
     setStripTransition("none");
     setStripTransform(-pageWidth);
-  }, [anchor, pageWidth, paging]);
+  }, [anchor, pageWidth, paging, view]);
 
   /** Animate to the previous/next page, then commit the anchor. */
   function animateToPage(delta: -1 | 1): boolean {
@@ -1134,8 +1146,8 @@ export default function WeekCalendar({
 
   // While paging each column is exactly one page-slice wide; otherwise the
   // columns share the row as before.
-  const dayColStyle = paging && dayWidth ? { width: dayWidth } : undefined;
-  const dayColClass = paging && dayWidth ? "shrink-0" : "flex-1 basis-0";
+  const dayColStyle = paging ? { width: dayWidth || columnPercent } : undefined;
+  const dayColClass = paging ? "shrink-0" : "flex-1 basis-0";
 
   // ----- shared grid pieces (used by both the desktop grid and the phone pager) -----
 
@@ -1480,7 +1492,10 @@ export default function WeekCalendar({
                   <div
                     ref={headerStripRef}
                     className="flex will-change-transform"
-                    style={{ width: stripWidth || undefined }}
+                    style={{
+                      width: stripWidth || stripPercent,
+                      transform: dayWidth ? undefined : restingOffset,
+                    }}
                   >
                     {days.map(dayHeaderCell)}
                   </div>
@@ -1496,7 +1511,11 @@ export default function WeekCalendar({
                     <div
                       ref={allDayStripRef}
                       className="relative will-change-transform"
-                      style={{ height: allDayHeight, width: stripWidth || undefined }}
+                      style={{
+                        height: allDayHeight,
+                        width: stripWidth || stripPercent,
+                        transform: dayWidth ? undefined : restingOffset,
+                      }}
                     >
                       {allDayBarEls}
                     </div>
@@ -1521,7 +1540,11 @@ export default function WeekCalendar({
                   <div
                     ref={bodyStripRef}
                     className="relative flex will-change-transform"
-                    style={{ width: stripWidth || undefined, height: GRID_HEIGHT }}
+                    style={{
+                      width: stripWidth || stripPercent,
+                      height: GRID_HEIGHT,
+                      transform: dayWidth ? undefined : restingOffset,
+                    }}
                   >
                     {slotLines}
                     {days.map(dayBodyColumn)}
