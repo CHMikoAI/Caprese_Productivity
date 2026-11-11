@@ -81,7 +81,9 @@ export default function MonthView({
   const month = anchor.getMonth();
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col px-2 pb-2 sm:px-4 sm:pb-4">
+    // The bottom padding keeps the last week clear of the floating phone tab
+    // bar (--tabbar-space is zero on desktop).
+    <div className="flex min-h-0 flex-1 flex-col px-2 pb-[calc(var(--tabbar-space)+0.5rem)] sm:px-4 sm:pb-[calc(var(--tabbar-space)+1rem)]">
       <div className="grid grid-cols-7 border-b border-neutral-800/80">
         {WEEKDAYS_SHORT.map((day) => (
           <div
@@ -105,8 +107,22 @@ export default function MonthView({
             <div
               key={key}
               onClick={() => onOpenDay(day)}
+              // A real button can't hold the entry chips (buttons don't nest),
+              // so the cell is a div that behaves like one — keyboard included.
               role="button"
-              aria-label={`Open ${day.getDate()}.${day.getMonth() + 1}.${day.getFullYear()}`}
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpenDay(day);
+                }
+              }}
+              aria-label={`Open ${day.getDate()}.${day.getMonth() + 1}.${day.getFullYear()}${
+                dayEntries.length > 0
+                  ? ` — ${dayEntries.length} ${dayEntries.length === 1 ? "entry" : "entries"}`
+                  : ""
+              }`}
               title="Open this day"
               onDragOver={(e) => {
                 if (!dragTask) return;

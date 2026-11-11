@@ -1,5 +1,7 @@
+import ClientOnly from "@/components/ClientOnly";
 import JournalView from "@/components/journal/JournalView";
 import SetupBanner from "@/components/SetupBanner";
+import { PageSkeleton } from "@/components/Skeleton";
 import { getSupabase } from "@/lib/supabase";
 import type { JournalEntry } from "@/lib/types";
 
@@ -21,7 +23,9 @@ export default async function JournalPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {!sb && <SetupBanner />}
-      <JournalView initialEntries={entries} />
+      <ClientOnly fallback={<PageSkeleton />}>
+        <JournalView initialEntries={entries} />
+      </ClientOnly>
     </div>
   );
 }

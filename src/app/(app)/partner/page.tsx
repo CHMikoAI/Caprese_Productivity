@@ -1,5 +1,9 @@
+import ClientOnly from "@/components/ClientOnly";
+import PartnerArchive from "@/components/partner/PartnerArchive";
 import PartnerView from "@/components/partner/PartnerView";
 import SetupBanner from "@/components/SetupBanner";
+import { PageSkeleton } from "@/components/Skeleton";
+import { PARTNER_ARCHIVED } from "@/lib/features";
 import { getSupabase } from "@/lib/supabase";
 import type { PartnerGoal, PartnerWeek } from "@/lib/types";
 
@@ -33,7 +37,14 @@ export default async function PartnerPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {!sb && <SetupBanner />}
-      <PartnerView initialGoals={goals} initialWeeks={weeks} />
+      {PARTNER_ARCHIVED ? (
+        // Archived: the record, read-only (see lib/features.ts).
+        <PartnerArchive goals={goals} weeks={weeks} />
+      ) : (
+        <ClientOnly fallback={<PageSkeleton />}>
+          <PartnerView initialGoals={goals} initialWeeks={weeks} />
+        </ClientOnly>
+      )}
     </div>
   );
 }

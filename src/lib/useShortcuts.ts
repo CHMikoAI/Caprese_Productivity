@@ -4,8 +4,8 @@ import { useEffect, useRef } from "react";
 
 export type ShortcutMap = Record<string, () => void>;
 
-/** Overlay pattern shared by every modal in the app (and the shortcut help). */
-const OVERLAY_SELECTOR = ".fixed.inset-0.z-50";
+/** Every dialog in the app is a `Sheet`, which marks itself as modal. */
+const OVERLAY_SELECTOR = '[aria-modal="true"]';
 
 function isEditable(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;

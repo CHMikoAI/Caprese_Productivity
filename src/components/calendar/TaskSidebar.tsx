@@ -30,13 +30,13 @@ export default function TaskSidebar({
         </h2>
         <button
           onClick={onClose}
-          className="rounded-lg p-1.5 text-neutral-500 transition-colors hover:bg-neutral-900 hover:text-neutral-200"
+          className="icon-btn -mr-2"
           aria-label="Close sidebar"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto px-4 pb-4 pt-1">
+      <div className="flex-1 overflow-y-auto px-4 pb-[calc(var(--tabbar-space)+1rem)] pt-1">
         {tasks.length === 0 ? (
           <p className="pt-6 text-center text-sm text-neutral-600">
             Nothing left to schedule.

@@ -130,3 +130,21 @@ export function weekRangeLabel(weekStart: Date): string {
 export function minutesSinceMidnight(date: Date): number {
   return date.getHours() * 60 + date.getMinutes();
 }
+
+/** The next :00 or :30 from `from` (itself when it already sits on one). */
+export function nextHalfHour(from: Date = new Date()): Date {
+  const d = new Date(from);
+  const m = d.getMinutes();
+  d.setMinutes(m % 30 === 0 ? m : m + (30 - (m % 30)), 0, 0);
+  return d;
+}
+
+/** "30 min", "1 h", "1.5 h", "2 h 15 min" — a duration in plain words. */
+export function durationLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (rest === 0) return `${hours} h`;
+  if (rest === 30) return `${hours}.5 h`;
+  return `${hours} h ${rest} min`;
+}

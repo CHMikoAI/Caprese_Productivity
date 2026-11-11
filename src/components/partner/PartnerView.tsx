@@ -410,7 +410,7 @@ export default function PartnerView({
   return (
     // pb clears the floating capture button on phones, so the last card never
     // sits under it.
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 pb-28 sm:px-6 desk:pb-8">
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 pt-5 pb-page sm:px-6 sm:pt-6">
       <h1 className="title-lg">Partner</h1>
 
       {/* stats */}

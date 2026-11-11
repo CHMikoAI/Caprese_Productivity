@@ -1,5 +1,4 @@
 import BottomNav from "@/components/BottomNav";
-import CaptureFab from "@/components/thoughts/CaptureFab";
 import GlobalShortcuts from "@/components/GlobalShortcuts";
 import TopNav from "@/components/TopNav";
 import { artSources } from "@/lib/pantryArt";
@@ -24,23 +23,28 @@ export default async function AppLayout({
     if (typeof picksRes.data === "number") picks = picksRes.data;
     saladsReady = saladsRes.count ?? 0;
   }
+  const saladArt = artSources().salad;
 
   return (
-    // A fixed shell: bar, scroll area, bar. Only `main` scrolls, so the tab bar
-    // is part of the layout rather than floating at the viewport bottom — it
-    // sits at exactly the same height on every page, and mobile Safari never
-    // slides it around with its own toolbar.
-    <div className="flex h-full flex-col">
-      <TopNav
-        pantryPicks={picks}
-        saladsReady={saladsReady}
-        saladArt={artSources().salad}
+    // A fixed shell: the document itself never scrolls, only `main` does. That
+    // is what keeps the navigation planted — mobile Safari slides anything tied
+    // to a scrolling document around with its own toolbar.
+    //
+    // Desktop: top bar, then the scroll area. Phone: no bar at all — the page
+    // runs from the status bar to the bottom edge and the tab bar floats over
+    // it (`BottomNav` is positioned against this shell, hence `relative`).
+    <div className="relative flex h-full flex-col">
+      <TopNav pantryPicks={picks} saladsReady={saladsReady} saladArt={saladArt} />
+      {/* Installed on a phone the page draws under the status bar; this strip
+          keeps scrolling content from running through the clock. */}
+      <div
+        className="hidden h-[env(safe-area-inset-top)] shrink-0 bg-neutral-950 phone:block"
+        aria-hidden
       />
       <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
         {children}
       </main>
-      <BottomNav />
-      <CaptureFab />
+      <BottomNav pantryPicks={picks} saladsReady={saladsReady} saladArt={saladArt} />
       <GlobalShortcuts />
     </div>
   );
