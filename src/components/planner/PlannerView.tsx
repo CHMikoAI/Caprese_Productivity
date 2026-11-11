@@ -497,6 +497,7 @@ export default function PlannerView({
               <button
                 onClick={() => setPlanEntry(entry)}
                 disabled={pending}
+                aria-label={`Plan: ${entry.title}`}
                 className="mr-1 flex items-center gap-1.5 rounded-full bg-accent/15 px-3 py-2 text-xs font-semibold text-accent-bright transition-opacity active:opacity-60 disabled:opacity-40 sm:py-1.5"
               >
                 <CalendarClock className="h-3.5 w-3.5" />
@@ -508,7 +509,7 @@ export default function PlannerView({
                 onClick={() => setPlanEntry(entry)}
                 disabled={pending}
                 className="icon-btn disabled:opacity-40"
-                aria-label="Plan"
+                aria-label={`Plan: ${entry.title}`}
                 title="Plan — give it a new date"
               >
                 <CalendarClock className="h-[18px] w-[18px]" />
@@ -518,7 +519,7 @@ export default function PlannerView({
               onClick={() => resolve(entry, isGoal ? "missed" : "cancelled")}
               disabled={pending}
               className="icon-btn disabled:opacity-40"
-              aria-label={isGoal ? "Not achieved" : "Cancel"}
+              aria-label={`${isGoal ? "Not achieved" : "Cancel"}: ${entry.title}`}
               title={isGoal ? "Not achieved" : "Cancel — drop it"}
             >
               {isGoal ? (
@@ -546,7 +547,7 @@ export default function PlannerView({
           <button
             onClick={() => remove(entry)}
             className="icon-btn"
-            aria-label="Delete"
+            aria-label={`Delete: ${entry.title}`}
             title="Delete"
           >
             <Trash2 className="h-[18px] w-[18px]" />
@@ -567,13 +568,10 @@ export default function PlannerView({
         leading={<TypeGlyph entry={entry} />}
         actions={
           <>
-            <span className="mr-1 hidden rounded-md bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-400 sm:inline">
-              {STATUS_LABEL[entry.status]}
-            </span>
             <button
               onClick={() => resolve(entry, "active")}
               className="icon-btn"
-              aria-label="Reopen"
+              aria-label={`Reopen: ${entry.title}`}
               title="Reopen"
             >
               <RotateCcw className="h-[18px] w-[18px]" />
@@ -581,7 +579,7 @@ export default function PlannerView({
             <button
               onClick={() => remove(entry)}
               className="icon-btn"
-              aria-label="Delete"
+              aria-label={`Delete: ${entry.title}`}
               title="Delete"
             >
               <Trash2 className="h-[18px] w-[18px]" />
@@ -779,12 +777,12 @@ export default function PlannerView({
           <>
             <button
               onClick={() => (searchOpen ? setSearchOpen(false) : openSearch())}
-              className="icon-btn bg-neutral-800 text-neutral-200"
+              className="btn-plain px-3 sm:py-1.5"
               aria-label="Search"
               aria-expanded={searchOpen}
               title="Search (/)"
             >
-              <Search className="h-[18px] w-[18px]" />
+              <Search className="h-[18px] w-[18px] sm:h-4 sm:w-4" />
             </button>
             <button
               onClick={() => setProjectsOpen(true)}
@@ -1089,8 +1087,17 @@ function EntryRow({
         >
           {entry.title}
         </p>
-        {(project || deadline || (entry.type !== "todo" && entry.start_at)) && (
+        {(struck ||
+          project ||
+          deadline ||
+          (entry.type !== "todo" && entry.start_at)) && (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-neutral-500">
+            {/* archived rows say how they ended: done, cancelled, achieved… */}
+            {struck && (
+              <span className="font-medium text-neutral-400">
+                {STATUS_LABEL[entry.status]}
+              </span>
+            )}
             {project && (
               <span className="flex min-w-0 items-center gap-1.5">
                 <span

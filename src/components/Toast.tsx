@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SHEET_OPEN_EVENT } from "@/components/Sheet";
 
 export type ToastAction = { label: string; run: () => void };
 export type ToastState = { text: string; action?: ToastAction } | null;
@@ -28,7 +29,16 @@ export function useToast() {
     );
   }, []);
 
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => {
+    // A toast is about the page; once a sheet opens over it, it is stale —
+    // and it would sit right on the sheet's controls. (Messages raised while
+    // a sheet is open still show.)
+    window.addEventListener(SHEET_OPEN_EVENT, dismiss);
+    return () => {
+      window.removeEventListener(SHEET_OPEN_EVENT, dismiss);
+      window.clearTimeout(timer.current);
+    };
+  }, [dismiss]);
 
   return { message: toast, show, dismiss };
 }

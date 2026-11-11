@@ -14,6 +14,9 @@ const WIDTH: Record<Size, string> = {
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
 
+/** Fired on `window` whenever a sheet opens (toasts step aside for it). */
+export const SHEET_OPEN_EVENT = "caprese:sheet-open";
+
 /** Drag the sheet this far down (or flick it) and it lets go. */
 const DISMISS_PX = 110;
 const DISMISS_VELOCITY = 0.55; // px per ms
@@ -81,6 +84,7 @@ export default function Sheet({
   // Focus: move it into the dialog (unless a field already took it via
   // autoFocus), hand it back to whatever opened the dialog afterwards.
   useEffect(() => {
+    window.dispatchEvent(new Event(SHEET_OPEN_EVENT));
     const opener = document.activeElement as HTMLElement | null;
     const panel = panelRef.current;
     if (panel && !panel.contains(document.activeElement)) panel.focus();

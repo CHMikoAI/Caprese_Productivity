@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
+import { SHEET_OPEN_EVENT } from "@/components/Sheet";
 
 export type Reward = { picks: number; note?: string };
 
@@ -14,10 +15,21 @@ export function useRewardToast() {
     if (picks <= 0) return;
     setReward({ picks, note });
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setReward(null), 6000);
+    timer.current = window.setTimeout(() => setReward(null), 5000);
   }, []);
 
-  useEffect(() => () => window.clearTimeout(timer.current), []);
+  useEffect(() => {
+    // Like any toast, it steps aside the moment a sheet opens over the page.
+    const dismiss = () => {
+      window.clearTimeout(timer.current);
+      setReward(null);
+    };
+    window.addEventListener(SHEET_OPEN_EVENT, dismiss);
+    return () => {
+      window.removeEventListener(SHEET_OPEN_EVENT, dismiss);
+      window.clearTimeout(timer.current);
+    };
+  }, []);
 
   return { reward, showReward };
 }

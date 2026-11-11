@@ -1528,10 +1528,11 @@ export default function WeekCalendar({
           </button>
         </div>
 
-        {/* hidden on phones: dragging from the sidebar needs a mouse */}
+        {/* hidden on phones, either way up: dragging from the sidebar needs a
+            mouse */}
         <button
           onClick={() => setSidebarOpen((v) => !v)}
-          className={`icon-btn hidden sm:order-3 sm:inline-flex ${sidebarOpen ? "bg-neutral-800 text-neutral-100" : ""}`}
+          className={`icon-btn hidden sm:order-3 desk:inline-flex ${sidebarOpen ? "bg-neutral-800 text-neutral-100" : ""}`}
           aria-label="Toggle the To-plan sidebar"
           aria-pressed={sidebarOpen}
           title="To plan (S)"
@@ -1545,7 +1546,13 @@ export default function WeekCalendar({
           monthPaging ? (
             // ---- phone month pager: a prev/current/next strip driven by the
             // same axis-locked swipe as the day views ----
+            // The three layouts are keyed apart on purpose. Their strips are
+            // moved by writing `style.transform` directly, which React knows
+            // nothing about — unkeyed, it recycled the month strip's element as
+            // the day pager's header band and the stale offset came along,
+            // pushing the day labels a full screen off to the left.
             <div
+              key="month-pager"
               ref={monthRootRef}
               className="relative min-h-0 flex-1 overflow-hidden"
               style={{ touchAction: "pan-y" }}
@@ -1580,6 +1587,7 @@ export default function WeekCalendar({
           // ---- phone pager: fixed header band + vertical-only scrolling body,
           // with day columns/labels driven horizontally by the swipe gesture ----
           <div
+            key="day-pager"
             ref={mobileRootRef}
             className="flex min-h-0 flex-1 flex-col overflow-hidden"
             style={{ touchAction: "pan-y" }}
@@ -1656,6 +1664,7 @@ export default function WeekCalendar({
           </div>
         ) : (
           <div
+            key="grid"
             ref={scrollRef}
             onScroll={markScrolled}
             className="min-w-0 flex-1 overflow-auto"

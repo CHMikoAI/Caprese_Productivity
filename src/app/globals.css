@@ -475,8 +475,8 @@ h3 {
   }
   .chip-raised[aria-pressed="true"],
   .chip-raised[data-active="true"] {
-    background-color: var(--color-neutral-100);
-    color: var(--color-neutral-950);
+    background-color: var(--color-neutral-600);
+    color: #fff;
   }
 
   /* A row of chips that scrolls sideways instead of wrapping into a wall —
@@ -542,6 +542,16 @@ h3 {
     background-color: var(--color-neutral-600);
     color: #fff;
     font-weight: 600;
+  }
+  /* Under a finger the compact controls get taller — still slim enough to sit
+     in a toolbar, but no longer a target to aim at. */
+  @media (pointer: coarse) {
+    .segmented > button {
+      padding-block: 0.5rem;
+    }
+    .chip {
+      padding-block: 0.5625rem;
+    }
   }
 }
 

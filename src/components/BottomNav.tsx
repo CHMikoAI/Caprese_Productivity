@@ -21,8 +21,8 @@ export const TAB_RESELECT_EVENT = "caprese:tab-reselect";
  * Shown on every phone viewport, portrait and landscape (the `phone` variant);
  * real desktops carry the tabs in the top bar instead.
  *
- * Pantry closes the row with the salad tracker as its icon: salads ready to
- * redeem at the bottom, picks waiting to be drawn as the red badge.
+ * Pantry closes the row with the salad tracker as its icon — the salads ready
+ * to redeem, as before — and the picks waiting to be drawn as a red badge.
  */
 export default function BottomNav({
   pantryPicks = 0,
@@ -71,7 +71,7 @@ export default function BottomNav({
     >
       {/* Content fades out under the bar instead of colliding with it. */}
       <div
-        className="absolute inset-x-0 bottom-0 h-[calc(var(--tabbar-space)+1.25rem)] bg-gradient-to-t from-black via-black/70 to-transparent"
+        className="absolute inset-x-0 bottom-0 h-[calc(var(--tabbar-space)+1.5rem)] bg-linear-to-t from-black from-40% to-transparent"
         aria-hidden
       />
       <div className="relative mx-auto max-w-md px-3 pb-[var(--tabbar-bottom)]">
@@ -114,27 +114,25 @@ export default function BottomNav({
             aria-label={pantryLabel}
             className={tabClass(pantryActive)}
           >
-            <span className="relative flex h-6 w-6 items-center justify-center">
-              <span
-                className={`flex h-[26px] w-[26px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F6F1E7] ring-[1.5px] transition-shadow ${
-                  pantryActive ? "ring-accent-bright" : "ring-transparent"
-                }`}
-              >
-                <PantryArt
-                  src={saladArt}
-                  alt=""
-                  size={22}
-                  className="h-[22px] w-[22px] object-contain"
-                />
+            {/* The tracker as it always looked — salad and count in one small
+                pill — with the picks as the badge on its corner. */}
+            <span className="relative flex h-6 items-center">
+              <span className="flex h-6 items-center gap-1 rounded-full bg-white/10 pl-0.5 pr-[7px]">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F6F1E7]">
+                  <PantryArt
+                    src={saladArt}
+                    alt=""
+                    size={18}
+                    className="h-[18px] w-[18px] object-contain"
+                  />
+                </span>
+                <span className="text-xs font-semibold tabular-nums leading-none text-neutral-100">
+                  {saladsReady > 99 ? "99+" : saladsReady}
+                </span>
               </span>
               {pantryPicks > 0 && (
-                <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular-nums leading-none text-white ring-2 ring-neutral-900">
+                <span className="absolute -right-2.5 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular-nums leading-none text-white ring-2 ring-neutral-900">
                   {pantryPicks > 99 ? "99+" : pantryPicks}
-                </span>
-              )}
-              {saladsReady > 0 && (
-                <span className="absolute -bottom-1 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-neutral-100 px-1 text-[10px] font-bold tabular-nums leading-none text-neutral-950 ring-2 ring-neutral-900">
-                  {saladsReady > 99 ? "99+" : saladsReady}
                 </span>
               )}
             </span>

@@ -340,23 +340,25 @@ export default function JournalView({
                 const label = PILLAR_META[entry.pillar].label;
                 const day = `${WEEKDAYS_SHORT[(date.getDay() + 6) % 7]} ${date.getDate()}`;
                 return (
+                  // On a phone the sentence gets the full width, under a line
+                  // with the day and the actions; from sm on it is one row.
                   <li
                     key={entry.id}
-                    className={`flex items-start gap-3 py-1.5 pl-3.5 pr-1 transition-colors ${
+                    className={`flex flex-wrap items-center gap-x-3 py-1 pl-3.5 pr-1 transition-colors sm:flex-nowrap sm:items-start sm:py-1.5 ${
                       entry.entry_date === dateKey ? "bg-neutral-800/50" : ""
                     }`}
                   >
                     <span
                       title={label}
-                      className="flex w-16 shrink-0 items-center gap-1.5 pt-2.5 text-xs text-neutral-500"
+                      className="flex w-16 shrink-0 items-center gap-1.5 text-xs text-neutral-500 sm:pt-2.5"
                     >
                       <Icon className="h-3.5 w-3.5 shrink-0" aria-label={label} />
                       {day}
                     </span>
-                    <p className="min-w-0 flex-1 py-2 text-sm leading-relaxed text-neutral-100">
+                    <p className="order-last basis-full pb-2.5 pr-2.5 text-sm leading-relaxed text-neutral-100 sm:order-none sm:min-w-0 sm:flex-1 sm:basis-0 sm:py-2 sm:pr-0">
                       {entry.content}
                     </p>
-                    <span className="flex shrink-0">
+                    <span className="ml-auto flex shrink-0">
                       <button
                         onClick={() => {
                           selectDate(entry.entry_date);

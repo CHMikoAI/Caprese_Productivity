@@ -422,11 +422,11 @@ export default function ThoughtsView({
     <>
       <button
         onClick={() => setComposer("voice")}
-        className="icon-btn bg-neutral-800 text-neutral-200"
+        className="btn-plain px-3 sm:py-1.5"
         aria-label="Voice note"
         title="Voice note (V)"
       >
-        <Mic className="h-[18px] w-[18px]" />
+        <Mic className="h-[18px] w-[18px] sm:h-4 sm:w-4" />
       </button>
       <button
         onClick={() => setComposer("text")}

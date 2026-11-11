@@ -69,7 +69,8 @@ export default function PageHeader({
           <span className="shrink-0 text-sm text-neutral-500">{meta}</span>
         )}
         {actions && (
-          <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>
+          // stretch: icon-only buttons grow to the height of the labelled one
+          <div className="ml-auto flex shrink-0 items-stretch gap-2">{actions}</div>
         )}
       </header>
     </>
