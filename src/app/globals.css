@@ -294,8 +294,9 @@ a,
 }
 
 /* One focus ring for keyboard users, in the accent. Fields draw their own
-   (see .field), and a mouse or a finger never triggers it. */
-:where(a, button, summary, [role="button"], [tabindex]):focus-visible {
+   (see .field), and a mouse or a finger never triggers it. A dialog takes the
+   focus when it opens only to hold it — it is not a control, so no ring. */
+:where(a, button, summary, [role="button"], [tabindex]:not([role="dialog"])):focus-visible {
   outline: 2px solid var(--color-accent-bright);
   outline-offset: 2px;
 }
@@ -518,6 +519,52 @@ h3 {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 35%, transparent);
   }
 
+  /* The title of an entry: type straight onto the sheet, no box around it. */
+  .title-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 0.125rem 0;
+    font-size: var(--text-xl);
+    line-height: var(--text-xl--line-height);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: var(--color-neutral-50);
+    outline: none;
+    caret-color: var(--color-accent-bright);
+  }
+  .title-input::placeholder {
+    color: var(--color-neutral-600);
+  }
+
+  /* Native time control dressed as a pill inside a list row. */
+  .time-input {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 2.375rem;
+    min-width: 4.875rem;
+    border: none;
+    border-radius: 0.625rem;
+    background-color: var(--color-neutral-700);
+    padding: 0 0.625rem;
+    text-align: center;
+    font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    color: var(--color-neutral-50);
+    outline: none;
+  }
+  .time-input::-webkit-date-and-time-value {
+    margin: 0;
+    text-align: center;
+  }
+  .time-input::-webkit-calendar-picker-indicator {
+    display: none;
+  }
+  .time-input:focus-visible {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+
   /* Segmented control — the sliding pill Apple uses for view switching. */
   .segmented {
     display: inline-flex;
@@ -596,7 +643,7 @@ input[type="time"]::-webkit-calendar-picker-indicator {
    every control to 16px on phones so focusing never zooms; it also makes them
    comfortably tappable. Paired with the no-scale viewport, the app never zooms. */
 @media (max-width: 639px) {
-  input,
+  input:not(.title-input),
   select,
   textarea,
   [contenteditable="true"] {
