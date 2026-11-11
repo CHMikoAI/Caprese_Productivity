@@ -537,32 +537,40 @@ h3 {
     color: var(--color-neutral-600);
   }
 
-  /* Native time control dressed as a pill inside a list row. */
+  /* Time of day in a list row: hour and minute menus sharing one pill. */
   .time-input {
-    -webkit-appearance: none;
-    appearance: none;
+    display: inline-flex;
     height: 2.375rem;
-    min-width: 4.875rem;
-    border: none;
+    align-items: center;
     border-radius: 0.625rem;
     background-color: var(--color-neutral-700);
-    padding: 0 0.625rem;
-    text-align: center;
+    padding: 0 0.375rem;
     font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
     font-weight: 500;
     color: var(--color-neutral-50);
-    outline: none;
   }
-  .time-input::-webkit-date-and-time-value {
-    margin: 0;
-    text-align: center;
-  }
-  .time-input::-webkit-calendar-picker-indicator {
-    display: none;
-  }
-  .time-input:focus-visible {
+  .time-input:focus-within {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+  .time-input > select {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 100%;
+    border: none;
+    border-radius: 0.5rem;
+    background: transparent;
+    padding: 0 0.3125rem;
+    text-align: center;
+    text-align-last: center;
+    font: inherit;
+    color: inherit;
+    outline: none;
+    cursor: pointer;
+  }
+  .time-input > select > option {
+    background-color: var(--color-neutral-800);
+    color: var(--color-neutral-50);
   }
 
   /* Segmented control — the sliding pill Apple uses for view switching. */
@@ -602,21 +610,29 @@ h3 {
   }
 }
 
-/* Subtle scrollbars that fit the dark surfaces */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-neutral-700) transparent;
-}
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-neutral-700);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
+/* Subtle scrollbars that fit the dark surfaces — for a mouse only. A touch
+   screen keeps its own indicators, which appear while scrolling and get out of
+   the way again. In the base layer, so `.chip-scroller` (components) can switch
+   them off: an unlayered rule would win over it, and current browsers ignore
+   `::-webkit-scrollbar` once `scrollbar-width` is set. */
+@layer base {
+  @media (hover: hover) and (pointer: fine) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--color-neutral-700) transparent;
+    }
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--color-neutral-700);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+  }
 }
 
 /* Dark styling for native date/time inputs */
