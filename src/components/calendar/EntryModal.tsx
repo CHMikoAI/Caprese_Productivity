@@ -24,6 +24,7 @@ import {
   WEEKDAYS_SHORT,
   withMinutes,
 } from "@/lib/dates";
+import { blockPalette } from "@/lib/colorContrast";
 import { ENTRY_TYPE_ICON } from "@/lib/entryIcons";
 import { TODO_BATCH } from "@/lib/rewards";
 import {
@@ -56,15 +57,11 @@ export type EntryModalInitial = {
 };
 
 /** Lengths offered as one-tap chips. */
-const DURATIONS = [15, 30, 45, 60, 90, 120, 180];
+const DURATIONS = [30, 60, 90, 120, 180];
 /** Days offered in the strip, from today on. */
 const STRIP_DAYS = 14;
 /** Last half-hour slot of a day. */
 const LAST_SLOT = 23 * 60 + 30;
-
-function timeLabel(min: number) {
-  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
-}
 
 /** `list` plus `value` when it is not one of the presets, in order. */
 function withValue(list: number[], value: number): number[] {
@@ -85,6 +82,8 @@ const MONTHS = [
 ];
 
 const rowClass = "flex min-h-[3.25rem] items-center justify-between gap-3";
+const projectChip =
+  "inline-flex shrink-0 items-center rounded-full px-3.5 py-2 text-sm font-medium transition-colors";
 const pickChip =
   "inline-flex shrink-0 items-center rounded-full px-3.5 py-2 text-sm font-medium transition-colors aria-pressed:bg-neutral-100 aria-pressed:text-neutral-950";
 
@@ -104,10 +103,15 @@ function useSelectedInView(key: string | number) {
   return scroller;
 }
 
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const MINUTE_STEPS = Array.from({ length: 12 }, (_, i) => i * 5);
+
 /**
- * The native time control: a wheel on a phone (no keyboard), a typed field on
- * desktop. Unlike a list of half hours it takes any minute, so an entry planned
- * for 09:10 shows as 09:10.
+ * Hour and minute as two menus in one pill — always on the 24-hour clock.
+ * (The browser's own time control follows the device's region setting, which
+ * on an iPhone set to English means AM/PM.) Minutes go in steps of five; an
+ * entry that sits off that grid — planned for 09:12, say — keeps its minute on
+ * the list.
  */
 function TimeInput({
   value,
@@ -120,19 +124,40 @@ function TimeInput({
   label: string;
   invalid?: boolean;
 }) {
+  const minutes = ((value % 1440) + 1440) % 1440;
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const two = (n: number) => String(n).padStart(2, "0");
   return (
-    <input
-      type="time"
+    <span
+      role="group"
       aria-label={label}
-      aria-invalid={invalid || undefined}
-      value={timeLabel(((value % 1440) + 1440) % 1440)}
-      onChange={(e) => {
-        const [h, m] = e.target.value.split(":").map(Number);
-        // Clearing the field gives "" — keep the last real time.
-        if (Number.isFinite(h) && Number.isFinite(m)) onChange(h * 60 + m);
-      }}
       className={`time-input ${invalid ? "text-accent-bright" : ""}`}
-    />
+    >
+      <select
+        aria-label={`${label}: hour`}
+        value={hour}
+        onChange={(e) => onChange(Number(e.target.value) * 60 + minute)}
+      >
+        {HOURS.map((h) => (
+          <option key={h} value={h}>
+            {two(h)}
+          </option>
+        ))}
+      </select>
+      <span aria-hidden>:</span>
+      <select
+        aria-label={`${label}: minute`}
+        value={minute}
+        onChange={(e) => onChange(hour * 60 + Number(e.target.value))}
+      >
+        {withValue(MINUTE_STEPS, minute).map((m) => (
+          <option key={m} value={m}>
+            {two(m)}
+          </option>
+        ))}
+      </select>
+    </span>
   );
 }
 
@@ -192,29 +217,9 @@ function DayStrip({
   }
 
   return (
-    <div
-      ref={scroller}
-      className="chip-scroller relative -mx-5 px-5 sm:-mx-6 sm:px-6"
-      role="group"
-      aria-label="Day"
-    >
-      {noneLabel && (
-        <button
-          type="button"
-          onClick={onNone}
-          aria-pressed={value === null}
-          className={`flex h-[3.75rem] shrink-0 items-center rounded-2xl px-4 text-sm font-medium transition-colors ${
-            value === null ? "bg-accent text-white" : "bg-neutral-800 text-neutral-300"
-          }`}
-        >
-          {noneLabel}
-        </button>
-      )}
-      {before && chip(before, MONTHS[before.getMonth()])}
-      {days.map((day, i) =>
-        chip(day, i === 0 ? "Today" : WEEKDAYS_SHORT[(day.getDay() + 6) % 7]),
-      )}
-      {after && chip(after, MONTHS[after.getMonth()])}
+    <div className="flex gap-1.5">
+      {/* Pinned in front of the row: any date at all is always one tap away,
+          however far the days have been scrolled. */}
       <button
         type="button"
         onClick={onToggleCalendar}
@@ -226,6 +231,30 @@ function DayStrip({
       >
         <CalendarDays className="h-5 w-5" />
       </button>
+      <div
+        ref={scroller}
+        className="chip-scroller relative -mr-5 min-w-0 flex-1 rounded-l-2xl pr-5 sm:-mr-6 sm:pr-6"
+        role="group"
+        aria-label="Day"
+      >
+        {noneLabel && (
+          <button
+            type="button"
+            onClick={onNone}
+            aria-pressed={value === null}
+            className={`flex h-[3.75rem] shrink-0 items-center rounded-2xl px-4 text-sm font-medium transition-colors ${
+              value === null ? "bg-accent text-white" : "bg-neutral-800 text-neutral-300"
+            }`}
+          >
+            {noneLabel}
+          </button>
+        )}
+        {before && chip(before, MONTHS[before.getMonth()])}
+        {days.map((day, i) =>
+          chip(day, i === 0 ? "Today" : WEEKDAYS_SHORT[(day.getDay() + 6) % 7]),
+        )}
+        {after && chip(after, MONTHS[after.getMonth()])}
+      </div>
     </div>
   );
 }
@@ -689,7 +718,7 @@ export default function EntryModal({
                     {!allDay && (
                       <div
                         ref={durationRow}
-                        className="chip-scroller relative -mx-4 px-4 py-2.5"
+                        className="chip-scroller relative py-2.5"
                         role="group"
                         aria-label="Duration"
                       >
@@ -702,7 +731,7 @@ export default function EntryModal({
                               type="button"
                               onClick={() => setDurationMin(minutes)}
                               aria-pressed={durationMin === minutes}
-                              className={`${pickChip} bg-neutral-700/70 text-neutral-200`}
+                              className={`${pickChip} flex-1 justify-center whitespace-nowrap bg-neutral-700/70 px-2.5 text-neutral-200`}
                             >
                               {durationLabel(minutes)}
                             </button>
@@ -727,21 +756,34 @@ export default function EntryModal({
                     type="button"
                     onClick={() => setCategoryId("")}
                     aria-pressed={categoryId === ""}
-                    className={`${pickChip} bg-neutral-800 text-neutral-400`}
+                    className={`${projectChip} ${
+                      categoryId === ""
+                        ? "bg-neutral-600 text-white"
+                        : "bg-neutral-800 text-neutral-400"
+                    }`}
                   >
                     None
                   </button>
-                  {categories.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setCategoryId(categoryId === c.id ? "" : c.id)}
-                      aria-pressed={categoryId === c.id}
-                      className={`${pickChip} bg-neutral-800 text-neutral-200`}
-                    >
-                      {c.name}
-                    </button>
-                  ))}
+                  {categories.map((c) => {
+                    const selected = categoryId === c.id;
+                    // The chosen project wears its own colour — the one its
+                    // blocks have on the calendar.
+                    const pal = selected ? blockPalette(c.color, 0.9) : null;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setCategoryId(selected ? "" : c.id)}
+                        aria-pressed={selected}
+                        className={`${projectChip} ${
+                          selected ? "" : "bg-neutral-800 text-neutral-200"
+                        }`}
+                        style={pal ? { backgroundColor: pal.bg, color: pal.title } : undefined}
+                      >
+                        {c.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </section>
             )}
