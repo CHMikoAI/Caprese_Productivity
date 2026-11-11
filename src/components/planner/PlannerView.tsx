@@ -1098,16 +1098,7 @@ function EntryRow({
                 {STATUS_LABEL[entry.status]}
               </span>
             )}
-            {project && (
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: project.color }}
-                  aria-hidden
-                />
-                <span className="truncate">{project.name}</span>
-              </span>
-            )}
+            {project && <span className="min-w-0 truncate">{project.name}</span>}
             {deadline && (
               <span className={overdue ? "text-accent-bright" : ""}>
                 {overdue ? "was due " : "due "}

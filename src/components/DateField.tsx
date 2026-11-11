@@ -38,9 +38,6 @@ export default function DateField({
   maxDate?: Date;
 }) {
   const [open, setOpen] = useState(false);
-  const [viewMonth, setViewMonth] = useState(() =>
-    startOfMonth(value ?? new Date()),
-  );
   // A field near the right edge opens its calendar leftwards, so it never
   // hangs off the screen.
   const [alignRight, setAlignRight] = useState(false);
@@ -52,8 +49,6 @@ export default function DateField({
       setOpen(false);
       return;
     }
-    // Always open on the month of the current value.
-    setViewMonth(startOfMonth(value ?? new Date()));
     const rect = rootRef.current?.getBoundingClientRect();
     setAlignRight(
       rect ? rect.left + POPOVER_W > window.innerWidth - 8 && rect.right >= POPOVER_W : false,
@@ -77,12 +72,6 @@ export default function DateField({
   useEffect(() => {
     if (open) popoverRef.current?.scrollIntoView({ block: "nearest" });
   }, [open]);
-
-  const today = startOfDay(new Date());
-  const todayDisabled = maxDate ? today.getTime() > maxDate.getTime() : false;
-  const cells = Array.from({ length: 42 }, (_, i) =>
-    addDays(startOfWeek(startOfMonth(viewMonth)), i),
-  );
 
   return (
     <div
@@ -133,86 +122,118 @@ export default function DateField({
             alignRight ? "right-0" : "left-0"
           }`}
         >
-          <div className="flex items-center justify-between pb-1.5">
-            <button
-              type="button"
-              onClick={() => setViewMonth((m) => addMonths(m, -1))}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-700 hover:text-neutral-100 active:opacity-50"
-              aria-label="Previous month"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="text-sm font-semibold text-neutral-100">
-              {monthLabel(viewMonth)}
-            </span>
-            <button
-              type="button"
-              onClick={() => setViewMonth((m) => addMonths(m, 1))}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-700 hover:text-neutral-100 active:opacity-50"
-              aria-label="Next month"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-7 pb-1">
-            {WEEKDAY_INITIALS.map((d, i) => (
-              <span
-                key={i}
-                className="py-1 text-center text-[11px] font-medium text-neutral-500"
-              >
-                {d}
-              </span>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-0.5">
-            {cells.map((day) => {
-              const inMonth = day.getMonth() === viewMonth.getMonth();
-              const selected = value ? isSameDay(day, value) : false;
-              const isToday = isSameDay(day, today);
-              const disabled = maxDate ? day.getTime() > maxDate.getTime() : false;
-              return (
-                <button
-                  key={toDateKey(day)}
-                  type="button"
-                  disabled={disabled}
-                  aria-pressed={selected}
-                  aria-current={isToday ? "date" : undefined}
-                  onClick={() => {
-                    onChange(day);
-                    setOpen(false);
-                  }}
-                  className={`h-9 rounded-lg text-sm tabular-nums transition-colors sm:h-8 sm:text-xs ${
-                    disabled
-                      ? "cursor-not-allowed text-neutral-700"
-                      : selected
-                        ? "bg-accent font-semibold text-white"
-                        : isToday
-                          ? "font-semibold text-accent-bright hover:bg-neutral-700"
-                          : inMonth
-                            ? "text-neutral-200 hover:bg-neutral-700"
-                            : "text-neutral-600 hover:bg-neutral-700"
-                  }`}
-                >
-                  {day.getDate()}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-1.5 flex justify-end border-t border-neutral-700/70 pt-1.5">
-            <button
-              type="button"
-              disabled={todayDisabled}
-              onClick={() => {
-                onChange(today);
-                setOpen(false);
-              }}
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-accent-bright transition-colors hover:bg-neutral-700 active:opacity-50 disabled:opacity-40"
-            >
-              Today
-            </button>
-          </div>
+          <MonthCalendar
+            value={value}
+            maxDate={maxDate}
+            onChange={(day) => {
+              onChange(day);
+              setOpen(false);
+            }}
+          />
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * A month to pick a day from: pager, grid and a "Today" shortcut. It opens on
+ * the month of the current value. Used in the date field's popover and inline
+ * in forms.
+ */
+export function MonthCalendar({
+  value,
+  onChange,
+  maxDate,
+}: {
+  value: Date | null;
+  onChange: (date: Date) => void;
+  /** Days after this are shown but not selectable. */
+  maxDate?: Date;
+}) {
+  const [viewMonth, setViewMonth] = useState(() =>
+    startOfMonth(value ?? new Date()),
+  );
+  const today = startOfDay(new Date());
+  const todayDisabled = maxDate ? today.getTime() > maxDate.getTime() : false;
+  const cells = Array.from({ length: 42 }, (_, i) =>
+    addDays(startOfWeek(startOfMonth(viewMonth)), i),
+  );
+
+  return (
+    <>
+    <div className="flex items-center justify-between pb-1.5">
+      <button
+        type="button"
+        onClick={() => setViewMonth((m) => addMonths(m, -1))}
+        className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-700 hover:text-neutral-100 active:opacity-50"
+        aria-label="Previous month"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <span className="text-sm font-semibold text-neutral-100">
+        {monthLabel(viewMonth)}
+      </span>
+      <button
+        type="button"
+        onClick={() => setViewMonth((m) => addMonths(m, 1))}
+        className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-700 hover:text-neutral-100 active:opacity-50"
+        aria-label="Next month"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
+    <div className="grid grid-cols-7 pb-1">
+      {WEEKDAY_INITIALS.map((d, i) => (
+        <span
+          key={i}
+          className="py-1 text-center text-[11px] font-medium text-neutral-500"
+        >
+          {d}
+        </span>
+      ))}
+    </div>
+    <div className="grid grid-cols-7 gap-0.5">
+      {cells.map((day) => {
+        const inMonth = day.getMonth() === viewMonth.getMonth();
+        const selected = value ? isSameDay(day, value) : false;
+        const isToday = isSameDay(day, today);
+        const disabled = maxDate ? day.getTime() > maxDate.getTime() : false;
+        return (
+          <button
+            key={toDateKey(day)}
+            type="button"
+            disabled={disabled}
+            aria-pressed={selected}
+            aria-current={isToday ? "date" : undefined}
+            onClick={() => onChange(day)}
+            className={`h-9 rounded-lg text-sm tabular-nums transition-colors sm:h-8 sm:text-xs ${
+              disabled
+                ? "cursor-not-allowed text-neutral-700"
+                : selected
+                  ? "bg-accent font-semibold text-white"
+                  : isToday
+                    ? "font-semibold text-accent-bright hover:bg-neutral-700"
+                    : inMonth
+                      ? "text-neutral-200 hover:bg-neutral-700"
+                      : "text-neutral-600 hover:bg-neutral-700"
+            }`}
+          >
+            {day.getDate()}
+          </button>
+        );
+      })}
+    </div>
+    <div className="mt-1.5 flex justify-end border-t border-neutral-700/70 pt-1.5">
+      <button
+        type="button"
+        disabled={todayDisabled}
+        onClick={() => onChange(today)}
+        className="rounded-lg px-3 py-1.5 text-sm font-medium text-accent-bright transition-colors hover:bg-neutral-700 active:opacity-50 disabled:opacity-40"
+      >
+        Today
+      </button>
+    </div>
+    </>
   );
 }

@@ -3,10 +3,9 @@
 import type { Category } from "@/lib/types";
 
 /**
- * Project filter: "All projects" plus one chip per project, each led by the
- * project's colour so it reads the same as its blocks on the calendar. On a
- * phone the row scrolls sideways (bleeding to the screen edges) instead of
- * stacking into several lines; from `sm` on it wraps.
+ * Project filter: "All projects" plus one chip per project. On a phone the row
+ * scrolls sideways (bleeding to the screen edges) instead of stacking into
+ * several lines; from `sm` on it wraps.
  *
  * Sits inside a page container padded `px-4 sm:px-6`.
  */
@@ -43,11 +42,6 @@ export default function ProjectChips({
           aria-pressed={value === category.id}
           className="chip"
         >
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ backgroundColor: category.color }}
-            aria-hidden
-          />
           {category.name}
         </button>
       ))}

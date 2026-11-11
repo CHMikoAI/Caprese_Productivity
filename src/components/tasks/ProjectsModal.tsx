@@ -159,11 +159,6 @@ export default function ProjectsModal({
             </li>
           ) : (
             <li key={project.id} className="flex items-center gap-2.5 pl-2">
-              <span
-                className="h-3 w-3 shrink-0 rounded-full"
-                style={{ backgroundColor: project.color }}
-                aria-hidden
-              />
               <span className="min-w-0 flex-1 truncate text-sm text-neutral-100">
                 {project.name}
               </span>
