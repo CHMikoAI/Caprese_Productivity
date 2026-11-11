@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Caprese",
     short_name: "Caprese",
-    description: "Personal weekly planning — calendar, planner, journal, pantry.",
+    description: "Personal weekly planning — calendar, planner, thoughts, journal, pantry.",
     // Launch straight into the calendar; `standalone` drops the browser chrome
     // so it behaves like an app once added to the home screen.
     start_url: "/calendar",
@@ -28,6 +28,7 @@ export default function manifest(): MetadataRoute.Manifest {
     ],
     shortcuts: [
       { name: "Planner", url: "/planner" },
+      { name: "Thoughts", url: "/thoughts" },
       { name: "Journal", url: "/journal" },
       { name: "Pantry", url: "/pantry" },
     ],
