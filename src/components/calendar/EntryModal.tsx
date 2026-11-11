@@ -57,7 +57,7 @@ export type EntryModalInitial = {
 };
 
 /** Lengths offered as one-tap chips. */
-const DURATIONS = [30, 60, 90, 120, 180];
+const DURATIONS = [30, 60, 90, 120, 240];
 /** Days offered in the strip, from today on. */
 const STRIP_DAYS = 14;
 /** Last half-hour slot of a day. */
@@ -88,32 +88,49 @@ const pickChip =
   "inline-flex shrink-0 items-center rounded-full px-3.5 py-2 text-sm font-medium transition-colors aria-pressed:bg-neutral-100 aria-pressed:text-neutral-950";
 
 /**
- * Keeps the selected chip of a sideways-scrolling row in sight. Sideways only:
- * `scrollIntoView` would also move the form, which must not jump.
+ * Keeps the selected chip of a sideways-scrolling row in sight — and otherwise
+ * leaves the row alone: a chip that is already visible stays where the finger
+ * found it. Sideways only (`scrollIntoView` would also move the form), and the
+ * first placement is not animated.
  */
 function useSelectedInView(key: string | number) {
   const scroller = useRef<HTMLDivElement>(null);
+  const placed = useRef(false);
   useEffect(() => {
     const row = scroller.current;
     const chip = row?.querySelector<HTMLElement>('[aria-pressed="true"]');
     if (!row || !chip) return;
-    const target = chip.offsetLeft - (row.clientWidth - chip.offsetWidth) / 2;
-    row.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+    const margin = 12;
+    const left = chip.offsetLeft - margin;
+    const right = chip.offsetLeft + chip.offsetWidth + margin;
+    let target: number | null = null;
+    if (left < row.scrollLeft) target = left;
+    else if (right > row.scrollLeft + row.clientWidth) target = right - row.clientWidth;
+    if (target !== null) {
+      row.scrollTo({
+        left: Math.max(0, target),
+        behavior: placed.current ? "smooth" : "auto",
+      });
+    }
+    placed.current = true;
   }, [key]);
   return scroller;
 }
 
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const MINUTE_STEPS = Array.from({ length: 12 }, (_, i) => i * 5);
+/** Every half hour of the day, in minutes since midnight. */
+const HALF_HOURS = Array.from({ length: 48 }, (_, i) => i * 30);
+
+function timeLabel(min: number) {
+  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+}
 
 /**
- * Hour and minute as two menus in one pill — always on the 24-hour clock.
- * (The browser's own time control follows the device's region setting, which
- * on an iPhone set to English means AM/PM.) Minutes go in steps of five; an
- * entry that sits off that grid — planned for 09:12, say — keeps its minute on
- * the list.
+ * One list of times — every half hour on the 24-hour clock. Under a finger it
+ * is the system's own menu; under a mouse it is a list drawn to match the rest
+ * of the dialog. An entry that sits between two half hours (dragged to 09:10,
+ * say) keeps its real time on the list.
  */
-function TimeInput({
+function TimeSelect({
   value,
   onChange,
   label,
@@ -124,39 +141,122 @@ function TimeInput({
   label: string;
   invalid?: boolean;
 }) {
-  const minutes = ((value % 1440) + 1440) % 1440;
-  const hour = Math.floor(minutes / 60);
-  const minute = minutes % 60;
-  const two = (n: number) => String(n).padStart(2, "0");
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const current = ((value % 1440) + 1440) % 1440;
+  const options = withValue(HALF_HOURS, current);
+
+  // Close on a press anywhere else.
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: PointerEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  // Open on the current time, with the list itself in view.
+  useEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    const selected = list?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (list && selected) {
+      list.scrollTop = selected.offsetTop - (list.clientHeight - selected.offsetHeight) / 2;
+    }
+    list?.scrollIntoView({ block: "nearest" });
+  }, [open]);
+
+  function step(delta: number) {
+    const index = options.indexOf(current);
+    const next = options[Math.min(options.length - 1, Math.max(0, index + delta))];
+    if (next !== current) onChange(next);
+  }
+
+  // The arrow keys move the time while the list is open — keep it in sight.
+  useEffect(() => {
+    if (!open) return;
+    listRef.current
+      ?.querySelector<HTMLElement>('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [open, current]);
+
   return (
-    <span
-      role="group"
-      aria-label={label}
-      className={`time-input ${invalid ? "text-accent-bright" : ""}`}
-    >
-      <select
-        aria-label={`${label}: hour`}
-        value={hour}
-        onChange={(e) => onChange(Number(e.target.value) * 60 + minute)}
+    <span ref={rootRef} className="relative inline-flex">
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`${label}: ${timeLabel(current)}`}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            step(e.key === "ArrowDown" ? 1 : -1);
+          } else if (e.key === "Escape" && open) {
+            // Close the list only — not the dialog it sits in.
+            e.stopPropagation();
+            setOpen(false);
+          } else if (e.key === "Tab") {
+            setOpen(false);
+          }
+        }}
+        className={`time-pill ${invalid ? "text-accent-bright" : ""} ${
+          open ? "bg-neutral-600" : ""
+        }`}
       >
-        {HOURS.map((h) => (
-          <option key={h} value={h}>
-            {two(h)}
+        {timeLabel(current)}
+      </button>
+
+      {/* Under a finger: the system menu, laid invisibly over the pill. */}
+      <select
+        aria-label={label}
+        value={current}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="absolute inset-0 hidden h-full w-full cursor-pointer opacity-0 [@media(pointer:coarse)]:block"
+      >
+        {options.map((min) => (
+          <option key={min} value={min}>
+            {timeLabel(min)}
           </option>
         ))}
       </select>
-      <span aria-hidden>:</span>
-      <select
-        aria-label={`${label}: minute`}
-        value={minute}
-        onChange={(e) => onChange(hour * 60 + Number(e.target.value))}
-      >
-        {withValue(MINUTE_STEPS, minute).map((m) => (
-          <option key={m} value={m}>
-            {two(m)}
-          </option>
-        ))}
-      </select>
+
+      {open && (
+        <div
+          ref={listRef}
+          role="listbox"
+          aria-label={label}
+          className="time-list absolute right-0 top-full z-[60] mt-1.5 max-h-64 w-28 scroll-mb-3 overflow-y-auto overscroll-contain rounded-2xl bg-neutral-800 p-1.5 shadow-2xl ring-1 ring-white/15"
+        >
+          {options.map((min) => {
+            const selected = min === current;
+            return (
+              <button
+                key={min}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                tabIndex={-1}
+                onClick={() => {
+                  onChange(min);
+                  setOpen(false);
+                }}
+                className={`flex h-9 w-full items-center justify-center rounded-lg text-sm tabular-nums transition-colors ${
+                  selected
+                    ? "bg-accent font-semibold text-white"
+                    : "text-neutral-200 hover:bg-neutral-700"
+                }`}
+              >
+                {timeLabel(min)}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </span>
   );
 }
@@ -445,7 +545,9 @@ export default function EntryModal({
       submitLabel="Save"
       // Typed input should not vanish on a stray tap next to the dialog.
       dismissOnBackdrop={false}
-      fill={notesExpanded}
+      // On a phone the sheet always takes the full height: its top edge then
+      // stays put whatever the form shows and whether or not a keyboard is up.
+      fill={notesExpanded ? true : "phone"}
       bodyClassName={notesExpanded ? "flex flex-col" : ""}
       headerExtra={
         <div className="px-5 pb-3 sm:px-6">
@@ -648,7 +750,7 @@ export default function EntryModal({
                           {dayLabel(startDate)}
                         </button>
                         {!allDay && (
-                          <TimeInput
+                          <TimeSelect
                             label="Start time"
                             value={startMin}
                             onChange={(min) => {
@@ -677,7 +779,7 @@ export default function EntryModal({
                             {dayLabel(allDay ? shownAllDayEnd : end)}
                           </button>
                           {!allDay && (
-                            <TimeInput
+                            <TimeSelect
                               label="End time"
                               value={minutesSinceMidnight(end)}
                               invalid={endInvalid}

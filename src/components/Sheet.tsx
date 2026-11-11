@@ -72,8 +72,12 @@ export default function Sheet({
   headerExtra?: React.ReactNode;
   size?: Size;
   dismissOnBackdrop?: boolean;
-  /** Take the full available height rather than hugging the content. */
-  fill?: boolean;
+  /**
+   * Take the full available height rather than hugging the content — always,
+   * or as a bottom sheet only (`"phone"`), where a sheet that changes height
+   * with its content or with the keyboard jumps around under the thumb.
+   */
+  fill?: boolean | "phone";
   bodyClassName?: string;
   /**
    * Phones only, with `onSubmit`: the title row becomes "Cancel · title · Save"
@@ -320,9 +324,11 @@ export default function Sheet({
         className={`relative flex w-full flex-col rounded-t-[1.75rem] bg-neutral-900 shadow-2xl outline-none sm:rounded-2xl ${
           WIDTH[size]
         } ${
-          fill
-            ? "h-[calc(100%-env(safe-area-inset-top)-0.75rem)] sm:h-[85vh]"
-            : "max-h-[calc(100%-env(safe-area-inset-top)-0.75rem)] sm:max-h-[90vh]"
+          fill === "phone"
+            ? "h-[calc(100%-env(safe-area-inset-top)-0.75rem)] sm:h-auto sm:max-h-[90vh]"
+            : fill
+              ? "h-[calc(100%-env(safe-area-inset-top)-0.75rem)] sm:h-[85vh]"
+              : "max-h-[calc(100%-env(safe-area-inset-top)-0.75rem)] sm:max-h-[90vh]"
         } ${
           closing
             ? "animate-sheet-out sm:animate-dialog-out"

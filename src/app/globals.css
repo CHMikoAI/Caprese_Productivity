@@ -537,40 +537,33 @@ h3 {
     color: var(--color-neutral-600);
   }
 
-  /* Time of day in a list row: hour and minute menus sharing one pill. */
-  .time-input {
+  /* Time of day in a list row: a pill that opens the list of times. */
+  .time-pill {
     display: inline-flex;
     height: 2.375rem;
+    min-width: 4.5rem;
     align-items: center;
+    justify-content: center;
     border-radius: 0.625rem;
     background-color: var(--color-neutral-700);
-    padding: 0 0.375rem;
+    padding: 0 0.75rem;
     font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
     font-weight: 500;
     color: var(--color-neutral-50);
+    transition: background-color 0.15s ease;
   }
-  .time-input:focus-within {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  @media (hover: hover) {
+    .time-pill:hover {
+      background-color: var(--color-neutral-600);
+    }
   }
-  .time-input > select {
-    -webkit-appearance: none;
-    appearance: none;
-    height: 100%;
-    border: none;
-    border-radius: 0.5rem;
-    background: transparent;
-    padding: 0 0.3125rem;
-    text-align: center;
-    text-align-last: center;
-    font: inherit;
-    color: inherit;
-    outline: none;
-    cursor: pointer;
+  /* The list of times scrolls, but needs no bar to say so. */
+  .time-list {
+    scrollbar-width: none;
   }
-  .time-input > select > option {
-    background-color: var(--color-neutral-800);
-    color: var(--color-neutral-50);
+  .time-list::-webkit-scrollbar {
+    display: none;
   }
 
   /* Segmented control — the sliding pill Apple uses for view switching. */
