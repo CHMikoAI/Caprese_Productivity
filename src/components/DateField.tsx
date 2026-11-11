@@ -13,12 +13,15 @@ import {
   formatDMY,
   isSameDay,
   monthLabel,
+  startOfDay,
   startOfMonth,
   startOfWeek,
   toDateKey,
 } from "@/lib/dates";
 
 const WEEKDAY_INITIALS = ["M", "T", "W", "T", "F", "S", "S"];
+/** The popover's width in px (w-72) — needed to decide which side it opens on. */
+const POPOVER_W = 288;
 
 /** Date picker that always displays DD.MM.YYYY and opens a month calendar. */
 export default function DateField({
@@ -38,72 +41,114 @@ export default function DateField({
   const [viewMonth, setViewMonth] = useState(() =>
     startOfMonth(value ?? new Date()),
   );
+  // A field near the right edge opens its calendar leftwards, so it never
+  // hangs off the screen.
+  const [alignRight, setAlignRight] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (open) setViewMonth(startOfMonth(value ?? new Date()));
-  }, [open, value]);
+  function toggle() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    // Always open on the month of the current value.
+    setViewMonth(startOfMonth(value ?? new Date()));
+    const rect = rootRef.current?.getBoundingClientRect();
+    setAlignRight(
+      rect ? rect.left + POPOVER_W > window.innerWidth - 8 && rect.right >= POPOVER_W : false,
+    );
+    setOpen(true);
+  }
 
+  // Close on a press anywhere else — mouse or touch.
   useEffect(() => {
     if (!open) return;
-    function onDoc(e: MouseEvent) {
+    function onDown(e: PointerEvent) {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
   }, [open]);
 
+  // Inside a scrolling dialog the calendar can open below the fold: bring it in.
+  useEffect(() => {
+    if (open) popoverRef.current?.scrollIntoView({ block: "nearest" });
+  }, [open]);
+
+  const today = startOfDay(new Date());
+  const todayDisabled = maxDate ? today.getTime() > maxDate.getTime() : false;
   const cells = Array.from({ length: 42 }, (_, i) =>
     addDays(startOfWeek(startOfMonth(viewMonth)), i),
   );
 
   return (
-    <div ref={rootRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 rounded-xl bg-neutral-800 px-3.5 py-2.5 text-sm outline-none transition-opacity active:opacity-70 focus:ring-2 focus:ring-accent/40"
-      >
-        <CalendarIcon className="h-4 w-4 shrink-0 text-neutral-500" />
-        <span className={value ? "text-neutral-100" : "text-neutral-600"}>
-          {value ? formatDMY(value) : "No date"}
-        </span>
+    <div
+      ref={rootRef}
+      className="relative"
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && open) {
+          // Close the calendar only — not the dialog it may sit in.
+          e.stopPropagation();
+          setOpen(false);
+        }
+      }}
+    >
+      <div className="flex w-full items-center rounded-xl bg-neutral-800 focus-within:ring-2 focus-within:ring-accent/40">
+        <button
+          type="button"
+          onClick={toggle}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3.5 py-2.5 text-left text-sm outline-none transition-opacity active:opacity-70"
+        >
+          <CalendarIcon className="h-4 w-4 shrink-0 text-neutral-500" />
+          <span className={value ? "text-neutral-100" : "text-neutral-500"}>
+            {value ? formatDMY(value) : "No date"}
+          </span>
+        </button>
         {value && onClear && (
-          <span
-            role="button"
-            tabIndex={-1}
+          <button
+            type="button"
             aria-label="Clear date"
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={() => {
+              setOpen(false);
               onClear();
             }}
-            className="ml-auto rounded p-0.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+            className="mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-500 transition-colors hover:bg-neutral-700 hover:text-neutral-200 active:opacity-50"
           >
-            <X className="h-3.5 w-3.5" />
-          </span>
+            <X className="h-4 w-4" />
+          </button>
         )}
-      </button>
+      </div>
 
       {open && (
-        <div className="absolute left-0 z-[60] mt-1 w-64 rounded-2xl bg-neutral-800 p-2 shadow-2xl">
-          <div className="flex items-center justify-between px-1 pb-2">
+        <div
+          ref={popoverRef}
+          role="dialog"
+          aria-label="Choose a date"
+          className={`absolute z-[60] mt-1.5 w-72 max-w-[calc(100vw-2rem)] scroll-mb-3 rounded-2xl bg-neutral-800 p-2.5 shadow-2xl ring-1 ring-white/10 ${
+            alignRight ? "right-0" : "left-0"
+          }`}
+        >
+          <div className="flex items-center justify-between pb-1.5">
             <button
               type="button"
               onClick={() => setViewMonth((m) => addMonths(m, -1))}
-              className="rounded-md p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-700 hover:text-neutral-100 active:opacity-50"
               aria-label="Previous month"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-sm font-medium text-neutral-100">
+            <span className="text-sm font-semibold text-neutral-100">
               {monthLabel(viewMonth)}
             </span>
             <button
               type="button"
               onClick={() => setViewMonth((m) => addMonths(m, 1))}
-              className="rounded-md p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-neutral-400 transition-colors hover:bg-neutral-700 hover:text-neutral-100 active:opacity-50"
               aria-label="Next month"
             >
               <ChevronRight className="h-4 w-4" />
@@ -113,7 +158,7 @@ export default function DateField({
             {WEEKDAY_INITIALS.map((d, i) => (
               <span
                 key={i}
-                className="py-1 text-center text-[10px] font-medium text-neutral-600"
+                className="py-1 text-center text-[11px] font-medium text-neutral-500"
               >
                 {d}
               </span>
@@ -123,30 +168,48 @@ export default function DateField({
             {cells.map((day) => {
               const inMonth = day.getMonth() === viewMonth.getMonth();
               const selected = value ? isSameDay(day, value) : false;
+              const isToday = isSameDay(day, today);
               const disabled = maxDate ? day.getTime() > maxDate.getTime() : false;
               return (
                 <button
                   key={toDateKey(day)}
                   type="button"
                   disabled={disabled}
+                  aria-pressed={selected}
+                  aria-current={isToday ? "date" : undefined}
                   onClick={() => {
                     onChange(day);
                     setOpen(false);
                   }}
-                  className={`h-8 rounded-md text-xs transition-colors ${
+                  className={`h-9 rounded-lg text-sm tabular-nums transition-colors sm:h-8 sm:text-xs ${
                     disabled
                       ? "cursor-not-allowed text-neutral-700"
                       : selected
                         ? "bg-accent font-semibold text-white"
-                        : inMonth
-                          ? "text-neutral-200 hover:bg-neutral-800"
-                          : "text-neutral-600 hover:bg-neutral-800"
+                        : isToday
+                          ? "font-semibold text-accent-bright hover:bg-neutral-700"
+                          : inMonth
+                            ? "text-neutral-200 hover:bg-neutral-700"
+                            : "text-neutral-600 hover:bg-neutral-700"
                   }`}
                 >
                   {day.getDate()}
                 </button>
               );
             })}
+          </div>
+          <div className="mt-1.5 flex justify-end border-t border-neutral-700/70 pt-1.5">
+            <button
+              type="button"
+              disabled={todayDisabled}
+              onClick={() => {
+                onChange(today);
+                setOpen(false);
+              }}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-accent-bright transition-colors hover:bg-neutral-700 active:opacity-50 disabled:opacity-40"
+            >
+              Today
+            </button>
           </div>
         </div>
       )}

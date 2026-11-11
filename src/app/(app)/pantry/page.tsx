@@ -1,5 +1,7 @@
+import ClientOnly from "@/components/ClientOnly";
 import PantryView from "@/components/pantry/PantryView";
 import SetupBanner from "@/components/SetupBanner";
+import { PageSkeleton } from "@/components/Skeleton";
 import { artSources } from "@/lib/pantryArt";
 import { getSupabase } from "@/lib/supabase";
 import {
@@ -34,12 +36,14 @@ export default async function PantryPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {!sb && <SetupBanner />}
-      <PantryView
-        initialPicks={picks}
-        initialInventory={inventory}
-        initialSalads={salads}
-        art={artSources()}
-      />
+      <ClientOnly fallback={<PageSkeleton />}>
+        <PantryView
+          initialPicks={picks}
+          initialInventory={inventory}
+          initialSalads={salads}
+          art={artSources()}
+        />
+      </ClientOnly>
     </div>
   );
 }

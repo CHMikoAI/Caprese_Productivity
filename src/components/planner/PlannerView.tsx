@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Archive,
   Ban,
   CalendarClock,
-  CheckCircle2,
+  Check,
   ChevronDown,
+  ChevronRight,
   Eye,
   EyeOff,
-  FolderKanban,
+  FolderCog,
   Plus,
   RotateCcw,
   Search,
@@ -21,6 +24,7 @@ import {
   createEntry,
   deleteEntry,
   postponeEntry,
+  restoreEntry,
   setEntryStatus,
   updateEntry,
 } from "@/app/actions";
@@ -31,18 +35,19 @@ import {
   createInitial,
   editInitial,
 } from "@/components/calendar/entryModalInitial";
+import PageHeader from "@/components/PageHeader";
 import PlanModal from "@/components/planner/PlanModal";
+import ProjectChips from "@/components/ProjectChips";
 import ProjectsModal from "@/components/tasks/ProjectsModal";
 import RewardToast, { useRewardToast } from "@/components/RewardToast";
+import Section from "@/components/Section";
 import Toast, { useToast } from "@/components/Toast";
-import { formatDMY, formatTime } from "@/lib/dates";
+import { formatDMY, formatTime, nextHalfHour } from "@/lib/dates";
 import { ENTRY_TYPE_ICON } from "@/lib/entryIcons";
 import { isResolved, phaseOf, STATUS_LABEL } from "@/lib/entryStatus";
+import { scrollAppToTop } from "@/lib/scroll";
 import { useShortcuts } from "@/lib/useShortcuts";
 import { type Category, type Entry, type EntryStatus } from "@/lib/types";
-
-const inputClass =
-  "rounded-xl bg-neutral-800 px-3.5 py-2.5 text-sm text-neutral-50 placeholder:text-neutral-500 outline-none focus:ring-2 focus:ring-accent/40";
 
 type ModalState = { mode: "create" } | { mode: "edit"; entry: Entry };
 type TypeFilter = "all" | "task" | "todo" | "goal";
@@ -71,6 +76,17 @@ const NEXT_HORIZON: Record<Horizon, Horizon | null> = {
   year: null,
 };
 
+const listClass = "flex flex-col gap-2";
+
+/** What the toast says once an entry has been resolved (or brought back). */
+const STATUS_TOAST: Record<EntryStatus, string> = {
+  active: "Reopened",
+  done: "Marked done",
+  cancelled: "Cancelled",
+  achieved: "Goal achieved",
+  missed: "Marked not achieved",
+};
+
 function horizonEnd(from: Date, horizon: Horizon): Date {
   const d = new Date(from);
   if (horizon === "week") d.setDate(d.getDate() + 7);
@@ -97,12 +113,15 @@ function allDayRangeSuffix(entry: Entry): string {
 export default function PlannerView({
   initialEntries,
   initialCategories,
+  archivedPartnerGoals = 0,
 }: {
   initialEntries: Entry[];
   initialCategories: Category[];
+  /** Goals on the archived Partner track — the archive links to them. */
+  archivedPartnerGoals?: number;
 }) {
   const router = useRouter();
-  const { message: toast, show: showError } = useToast();
+  const { message: toast, show: showToast, dismiss: dismissToast } = useToast();
   const { reward, showReward } = useRewardToast();
 
   const [entries, setEntries] = useState(initialEntries);
@@ -111,7 +130,7 @@ export default function PlannerView({
   const [planEntry, setPlanEntry] = useState<Entry | null>(null);
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
-  // Collapsed section keys ("review" | "upcoming" | "toPlan"). Empty = all open.
+  // Collapsed section keys ("review" | "upcoming" | "toPlan" | "todo").
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleSection = (key: string) =>
     setCollapsed((prev) => {
@@ -136,6 +155,13 @@ export default function PlannerView({
   const quickAddRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  function openSearch() {
+    setSearchOpen(true);
+    scrollAppToTop();
+    // Focus also when the field is already there (autoFocus only fires on mount).
+    requestAnimationFrame(() => searchRef.current?.focus());
+  }
+
   useShortcuts({
     n: () => setModal({ mode: "create" }),
     q: () => {
@@ -149,12 +175,7 @@ export default function PlannerView({
       });
       requestAnimationFrame(() => quickAddRef.current?.focus());
     },
-    "/": () => {
-      setSearchOpen(true);
-      // Focus also when the field is already expanded (autoFocus only fires
-      // on mount).
-      requestAnimationFrame(() => searchRef.current?.focus());
-    },
+    "/": openSearch,
   });
 
   // Re-adopt server state whenever a fresh payload arrives (router.refresh).
@@ -248,14 +269,18 @@ export default function PlannerView({
     return { review, upcoming: withinHorizon, later, toPlan, todos, archive };
   }, [entries, now, typeFilter, projectFilter, showEvents, search, horizon]);
 
-  // ----- mutations -----
+  // ----- mutations (optimistic; a failure puts back exactly what it changed) -----
 
   function patchLocal(id: string, patch: Partial<Entry>) {
     setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   }
 
+  /**
+   * Resolve an entry (done / cancelled / achieved / missed) or reopen it. One
+   * tap is all it takes, so a resolution always comes with an Undo.
+   */
   function resolve(entry: Entry, status: EntryStatus) {
-    const prev = entries;
+    const previous = entry.status;
     patchLocal(entry.id, { status });
     setEntryStatus(entry.id, status)
       .then(({ picksAwarded }) => {
@@ -263,61 +288,91 @@ export default function PlannerView({
         if (picksAwarded > 0) showReward(picksAwarded);
       })
       .catch(() => {
-        setEntries(prev);
-        showError("Could not update the entry.");
+        patchLocal(entry.id, { status: previous });
+        showToast("Could not update the entry.");
       });
+    showToast(
+      STATUS_TOAST[status],
+      status === "active"
+        ? undefined
+        : { label: "Undo", run: () => resolve({ ...entry, status }, "active") },
+    );
   }
 
-  /** Plan dialog result: a concrete slot. Also revives overdue items. */
-  function schedule(entry: Entry, start: Date, end: Date) {
-    const prev = entries;
+  /** Plan dialog result: a slot (or whole days). Also revives overdue items. */
+  function schedule(entry: Entry, start: Date, end: Date, allDay: boolean) {
+    const before = {
+      start_at: entry.start_at,
+      end_at: entry.end_at,
+      all_day: entry.all_day,
+      status: entry.status,
+    };
     patchLocal(entry.id, {
       start_at: start.toISOString(),
       end_at: end.toISOString(),
-      all_day: false,
+      all_day: allDay,
       status: "active",
     });
     setPlanEntry(null);
-    postponeEntry(entry.id, start.toISOString(), end.toISOString())
+    postponeEntry(entry.id, start.toISOString(), end.toISOString(), allDay)
       .then(() => router.refresh())
       .catch(() => {
-        setEntries(prev);
-        showError("Could not plan the entry.");
+        patchLocal(entry.id, before);
+        showToast("Could not plan the entry.");
       });
   }
 
   /** Plan dialog result: no date — park the entry under "To plan". */
   function unschedule(entry: Entry) {
-    const prev = entries;
-    patchLocal(entry.id, {
+    const before = {
+      start_at: entry.start_at,
+      end_at: entry.end_at,
+      all_day: entry.all_day,
+      status: entry.status,
+    };
+    const patch = {
       start_at: null,
       end_at: null,
       all_day: false,
-      status: "active",
-    });
+      status: "active" as const,
+    };
+    patchLocal(entry.id, patch);
     setPlanEntry(null);
-    updateEntry(entry.id, {
-      start_at: null,
-      end_at: null,
-      all_day: false,
-      status: "active",
-    })
+    updateEntry(entry.id, patch)
       .then(() => router.refresh())
       .catch(() => {
-        setEntries(prev);
-        showError("Could not move the entry.");
+        patchLocal(entry.id, before);
+        showToast("Could not move the entry.");
       });
   }
 
+  /** Delete an entry. It is gone for good on the server, so offer the way back. */
   function remove(entry: Entry) {
-    const prev = entries;
     setEntries((list) => list.filter((e) => e.id !== entry.id));
-    deleteEntry(entry.id)
+    const deleted = deleteEntry(entry.id)
       .then(() => router.refresh())
       .catch(() => {
-        setEntries(prev);
-        showError("Could not delete the entry.");
+        setEntries((list) =>
+          list.some((e) => e.id === entry.id) ? list : [entry, ...list],
+        );
+        showToast("Could not delete the entry.");
       });
+    showToast("Entry deleted", {
+      label: "Undo",
+      run: () => {
+        setEntries((list) =>
+          list.some((e) => e.id === entry.id) ? list : [entry, ...list],
+        );
+        // Wait for the delete to land first, or the two would cross.
+        deleted
+          .then(() => restoreEntry(entry))
+          .then(() => router.refresh())
+          .catch(() => {
+            setEntries((list) => list.filter((e) => e.id !== entry.id));
+            showToast("Could not restore the entry.");
+          });
+      },
+    });
   }
 
   // Quick add creates a To do (a short reminder with no deadline). Anything
@@ -341,7 +396,7 @@ export default function PlannerView({
       setNewTitle("");
       router.refresh();
     } catch {
-      showError("Could not add the to-do.");
+      showToast("Could not add the to-do.");
     }
     setBusy(false);
   }
@@ -380,12 +435,11 @@ export default function PlannerView({
         })
         .catch(() => {
           setEntries((list) => list.filter((e) => e.id !== tempId));
-          showError("Could not create the entry.");
+          showToast("Could not create the entry.");
         });
     } else {
-      const id = current.entry.id;
-      const prev = entries;
-      patchLocal(id, {
+      const entry = current.entry;
+      const patch = {
         type: result.type,
         title: result.title,
         category_id: result.categoryId,
@@ -393,169 +447,148 @@ export default function PlannerView({
         end_at: result.endAt,
         all_day: result.allDay,
         description: result.description,
-      });
-      updateEntry(id, {
-        type: result.type,
-        title: result.title,
-        category_id: result.categoryId,
-        start_at: result.startAt,
-        end_at: result.endAt,
-        all_day: result.allDay,
-        description: result.description,
-      })
+      };
+      patchLocal(entry.id, patch);
+      updateEntry(entry.id, patch)
         .then(() => router.refresh())
         .catch(() => {
-          setEntries(prev);
-          showError("Could not save the entry.");
+          patchLocal(entry.id, {
+            type: entry.type,
+            title: entry.title,
+            category_id: entry.category_id,
+            start_at: entry.start_at,
+            end_at: entry.end_at,
+            all_day: entry.all_day,
+            description: entry.description,
+          });
+          showToast("Could not save the entry.");
         });
     }
   }
 
-  // ----- row rendering -----
+  // ----- rows -----
 
-  const ghostBtn =
-    "flex items-center gap-1 rounded-xl bg-neutral-800 px-3 py-2 text-xs font-medium text-neutral-200 transition-opacity active:opacity-70 sm:px-2.5 sm:py-1.5";
-  const primaryBtn =
-    "flex items-center gap-1 rounded-lg bg-accent px-3 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 sm:px-2.5 sm:py-1.5";
-  // Touch has no hover, so the reveal-on-hover trick would leave these buttons
-  // invisible on phones — show them there, keep the desktop hover-reveal.
-  const iconBtn =
-    "rounded-lg p-2 text-neutral-400 transition-all hover:bg-neutral-800 hover:text-neutral-200 sm:p-1.5 sm:text-neutral-600 sm:opacity-0 sm:group-hover:opacity-100";
-
-  function Row({
-    entry,
-    struck,
-    overdue,
-    actions,
-  }: {
-    entry: Entry;
-    struck?: boolean;
-    overdue?: boolean;
-    actions: React.ReactNode;
-  }) {
-    const project = entry.category_id
-      ? categoryById.get(entry.category_id)
-      : undefined;
-    const TypeIcon = ENTRY_TYPE_ICON[entry.type];
-    return (
-      // On phones the action buttons wrap onto their own line so the title
-      // keeps its room; from sm on everything sits on one line as before.
-      <li className="group card flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-        <TypeIcon
-          className="h-4 w-4 shrink-0 text-neutral-500"
-          aria-label={entry.type}
-        />
-        <button
-          onClick={() => setModal({ mode: "edit", entry })}
-          className="min-w-0 flex-1 text-left"
-        >
-          <p
-            className={`truncate text-sm text-neutral-100 ${struck ? "text-neutral-500 line-through" : ""}`}
-          >
-            {entry.title}
-          </p>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-neutral-500">
-            {project && <span>{project.name}</span>}
-            {entry.type === "todo"
-              ? todoDeadline(entry) && (
-                  <span
-                    className={`flex items-center gap-1 ${overdue ? "text-accent/80" : ""}`}
-                  >
-                    <CalendarClock className="h-3 w-3" />
-                    {overdue ? "was due " : "due "}
-                    {formatDMY(todoDeadline(entry)!)}
-                  </span>
-                )
-              : entry.start_at && (
-                  <span
-                    className={`flex items-center gap-1 ${overdue ? "text-accent/80" : ""}`}
-                  >
-                    <CalendarClock className="h-3 w-3" />
-                    {overdue ? "was due " : ""}
-                    {formatDMY(new Date(entry.start_at))}
-                    {entry.all_day
-                      ? allDayRangeSuffix(entry)
-                      : ` · ${formatTime(new Date(entry.start_at))}`}
-                  </span>
-                )}
-          </div>
-        </button>
-        {/* Wraps on narrow screens — three actions at the larger type size no
-            longer fit on one phone line. */}
-        <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-1.5 sm:w-auto">
-          {actions}
-        </div>
-      </li>
-    );
-  }
-
-  /** Done / Plan / Cancel (tasks) — Achieved / Plan / Not achieved (goals).
-   * Todos resolve like tasks but never get a Plan button (no calendar slot). */
-  function decisionActions(entry: Entry, planPrimary = false) {
+  /** A row for an entry that can still be resolved: the check, then Plan / Cancel. */
+  function activeRow(
+    entry: Entry,
+    opts: { overdue?: boolean; plan?: "icon" | "primary" | "none" } = {},
+  ) {
     const isGoal = entry.type === "goal";
-    const doneBtn = (
-      <button
-        onClick={() => resolve(entry, isGoal ? "achieved" : "done")}
-        className={planPrimary ? ghostBtn : primaryBtn}
-      >
-        {isGoal ? (
-          <Trophy className="h-3.5 w-3.5" />
-        ) : (
-          <CheckCircle2 className="h-3.5 w-3.5" />
-        )}
-        {isGoal ? "Achieved" : "Done"}
-      </button>
-    );
-    const cancelBtn = (
-      <button
-        onClick={() => resolve(entry, isGoal ? "missed" : "cancelled")}
-        className={ghostBtn}
-      >
-        {isGoal ? <X className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}
-        {isGoal ? "Not achieved" : "Cancel"}
-      </button>
-    );
-    if (entry.type === "todo") {
-      return (
-        <>
-          {doneBtn}
-          {cancelBtn}
-        </>
-      );
-    }
-    const planBtn = (
-      <button
-        onClick={() => setPlanEntry(entry)}
-        className={planPrimary ? primaryBtn : ghostBtn}
-      >
-        <CalendarClock className="h-3.5 w-3.5" />
-        Plan
-      </button>
-    );
-    return planPrimary ? (
-      <>
-        {planBtn}
-        {doneBtn}
-        {cancelBtn}
-      </>
-    ) : (
-      <>
-        {doneBtn}
-        {planBtn}
-        {cancelBtn}
-      </>
+    const plan = entry.type === "todo" ? "none" : (opts.plan ?? "icon");
+    // Entries still being created have no id on the server to act on yet.
+    const pending = entry.id.startsWith("temp-");
+    return (
+      <EntryRow
+        key={entry.id}
+        entry={entry}
+        project={entry.category_id ? categoryById.get(entry.category_id) : undefined}
+        overdue={opts.overdue}
+        onOpen={() => setModal({ mode: "edit", entry })}
+        leading={
+          <CheckButton
+            entry={entry}
+            disabled={pending}
+            onClick={() => resolve(entry, isGoal ? "achieved" : "done")}
+          />
+        }
+        actions={
+          <>
+            {plan === "primary" && (
+              <button
+                onClick={() => setPlanEntry(entry)}
+                disabled={pending}
+                className="mr-1 flex items-center gap-1.5 rounded-full bg-accent/15 px-3 py-2 text-xs font-semibold text-accent-bright transition-opacity active:opacity-60 disabled:opacity-40 sm:py-1.5"
+              >
+                <CalendarClock className="h-3.5 w-3.5" />
+                Plan
+              </button>
+            )}
+            {plan === "icon" && (
+              <button
+                onClick={() => setPlanEntry(entry)}
+                disabled={pending}
+                className="icon-btn disabled:opacity-40"
+                aria-label="Plan"
+                title="Plan — give it a new date"
+              >
+                <CalendarClock className="h-[18px] w-[18px]" />
+              </button>
+            )}
+            <button
+              onClick={() => resolve(entry, isGoal ? "missed" : "cancelled")}
+              disabled={pending}
+              className="icon-btn disabled:opacity-40"
+              aria-label={isGoal ? "Not achieved" : "Cancel"}
+              title={isGoal ? "Not achieved" : "Cancel — drop it"}
+            >
+              {isGoal ? (
+                <X className="h-[18px] w-[18px]" />
+              ) : (
+                <Ban className="h-[18px] w-[18px]" />
+              )}
+            </button>
+          </>
+        }
+      />
     );
   }
 
-  function eventActions(entry: Entry) {
+  /** Events only show up for reference (the Events toggle): nothing to resolve. */
+  function eventRow(entry: Entry) {
     return (
-      <button
-        onClick={() => remove(entry)}
-        className={`${iconBtn} hover:text-accent`}
-        aria-label="Delete"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
+      <EntryRow
+        key={entry.id}
+        entry={entry}
+        project={entry.category_id ? categoryById.get(entry.category_id) : undefined}
+        onOpen={() => setModal({ mode: "edit", entry })}
+        leading={<TypeGlyph entry={entry} />}
+        actions={
+          <button
+            onClick={() => remove(entry)}
+            className="icon-btn"
+            aria-label="Delete"
+            title="Delete"
+          >
+            <Trash2 className="h-[18px] w-[18px]" />
+          </button>
+        }
+      />
+    );
+  }
+
+  function archiveRow(entry: Entry) {
+    return (
+      <EntryRow
+        key={entry.id}
+        entry={entry}
+        project={entry.category_id ? categoryById.get(entry.category_id) : undefined}
+        struck
+        onOpen={() => setModal({ mode: "edit", entry })}
+        leading={<TypeGlyph entry={entry} />}
+        actions={
+          <>
+            <span className="mr-1 hidden rounded-md bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-400 sm:inline">
+              {STATUS_LABEL[entry.status]}
+            </span>
+            <button
+              onClick={() => resolve(entry, "active")}
+              className="icon-btn"
+              aria-label="Reopen"
+              title="Reopen"
+            >
+              <RotateCcw className="h-[18px] w-[18px]" />
+            </button>
+            <button
+              onClick={() => remove(entry)}
+              className="icon-btn"
+              aria-label="Delete"
+              title="Delete"
+            >
+              <Trash2 className="h-[18px] w-[18px]" />
+            </button>
+          </>
+        }
+      />
     );
   }
 
@@ -565,22 +598,17 @@ export default function PlannerView({
     <Section
       title="To review"
       count={groups.review.length}
-      hint="Time's up — mark it done, plan it again, or cancel it."
+      hint="Time's up — tick it off, plan it again, or cancel it."
       collapsed={collapsed.has("review")}
       onToggle={() => toggleSection("review")}
     >
-      {groups.review.length === 0 ? (
-        <EmptyHint text="Nothing to review — all caught up." />
-      ) : (
-        groups.review.map((entry) => (
-          <Row
-            key={entry.id}
-            entry={entry}
-            overdue
-            actions={decisionActions(entry)}
-          />
-        ))
-      )}
+      <ul className={listClass}>
+        {groups.review.length === 0 ? (
+          <EmptyHint text="Nothing to review — all caught up." />
+        ) : (
+          groups.review.map((entry) => activeRow(entry, { overdue: true }))
+        )}
+      </ul>
     </Section>
   );
 
@@ -612,37 +640,31 @@ export default function PlannerView({
       onToggle={() => toggleSection("upcoming")}
       action={horizonToggle}
     >
-      {groups.upcoming.length === 0 ? (
-        <EmptyHint text={`Nothing in the next ${horizonNoun}.`} />
-      ) : (
-        groups.upcoming.map((entry) => (
-          <Row
-            key={entry.id}
-            entry={entry}
-            actions={
-              entry.type === "event"
-                ? eventActions(entry)
-                : decisionActions(entry)
-            }
-          />
-        ))
-      )}
-      {groups.later.length > 0 &&
-        (nextHorizon ? (
-          <li>
-            <button
-              onClick={() => setHorizon(nextHorizon)}
-              className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-center text-xs font-medium text-accent transition-opacity active:opacity-60"
-            >
-              +{groups.later.length} beyond this {horizonNoun} — show{" "}
-              {nextHorizon === "month" ? "the month" : "the year"}
-            </button>
-          </li>
+      <ul className={listClass}>
+        {groups.upcoming.length === 0 ? (
+          <EmptyHint text={`Nothing in the next ${horizonNoun}.`} />
         ) : (
-          <li className="px-4 py-2 text-center text-xs text-neutral-600">
-            +{groups.later.length} more than a year out
-          </li>
-        ))}
+          groups.upcoming.map((entry) =>
+            entry.type === "event" ? eventRow(entry) : activeRow(entry),
+          )
+        )}
+        {groups.later.length > 0 &&
+          (nextHorizon ? (
+            <li>
+              <button
+                onClick={() => setHorizon(nextHorizon)}
+                className="w-full rounded-2xl bg-neutral-900 px-4 py-3 text-center text-xs font-medium text-accent-bright transition-opacity active:opacity-60"
+              >
+                +{groups.later.length} beyond this {horizonNoun} — show{" "}
+                {nextHorizon === "month" ? "the month" : "the year"}
+              </button>
+            </li>
+          ) : (
+            <li className="px-4 py-2 text-center text-xs text-neutral-600">
+              +{groups.later.length} more than a year out
+            </li>
+          ))}
+      </ul>
     </Section>
   );
 
@@ -654,36 +676,34 @@ export default function PlannerView({
       collapsed={collapsed.has("toPlan")}
       onToggle={() => toggleSection("toPlan")}
     >
-      {groups.toPlan.length === 0 ? (
-        <EmptyHint text="No unplanned items." />
-      ) : (
-        groups.toPlan.map((entry) => (
-          <Row
-            key={entry.id}
-            entry={entry}
-            actions={decisionActions(entry, true)}
-          />
-        ))
-      )}
+      <ul className={listClass}>
+        {groups.toPlan.length === 0 ? (
+          <EmptyHint text="No unplanned items." />
+        ) : (
+          groups.toPlan.map((entry) => activeRow(entry, { plan: "primary" }))
+        )}
+      </ul>
     </Section>
   );
 
-  // Quick add lives with the To do list — it only creates to-dos. Hidden on
-  // phones (add via "New"), matching the rest of the planner's mobile layout.
+  // Quick add lives with the To do list — it only creates to-dos. The project
+  // picker is a desktop extra; on a phone it is title and go.
   const todoQuickAdd = (
-    <form onSubmit={quickAdd} className="mt-2 hidden gap-2 sm:flex">
+    <form onSubmit={quickAdd} className="flex gap-2">
       <input
         ref={quickAddRef}
         value={newTitle}
         onChange={(e) => setNewTitle(e.target.value)}
         placeholder="Quick add a to-do…"
         title="Quick add a to-do (Q)"
-        className={`${inputClass} min-w-0 flex-1`}
+        aria-label="Quick add a to-do"
+        enterKeyHint="done"
+        className="field min-w-0 flex-1"
       />
       <select
         value={newCategoryId}
         onChange={(e) => setNewCategoryId(e.target.value)}
-        className={`${inputClass} w-36 shrink-0`}
+        className="field hidden w-40 shrink-0 sm:block"
         aria-label="Project"
       >
         <option value="">No project</option>
@@ -696,7 +716,7 @@ export default function PlannerView({
       <button
         type="submit"
         disabled={busy || !newTitle.trim()}
-        className="btn-plain shrink-0 disabled:opacity-40"
+        className="btn-plain shrink-0 px-3.5"
       >
         <Plus className="h-4 w-4" />
         Add
@@ -711,65 +731,122 @@ export default function PlannerView({
       hint="Quick reminders — every 3 you finish earns a pick."
       collapsed={collapsed.has("todo")}
       onToggle={() => toggleSection("todo")}
-      beforeList={todoQuickAdd}
     >
-      {groups.todos.length === 0 ? (
-        <EmptyHint text="No reminders yet — quick add one above." />
-      ) : (
-        groups.todos.map((entry) => {
-          const dl = todoDeadline(entry);
-          const overdue = dl != null && dl.getTime() <= now.getTime();
-          return (
-            <Row
-              key={entry.id}
-              entry={entry}
-              overdue={overdue}
-              actions={decisionActions(entry)}
-            />
-          );
-        })
-      )}
+      {todoQuickAdd}
+      <ul className={`${listClass} mt-2`}>
+        {groups.todos.length === 0 ? (
+          <EmptyHint text="No reminders yet — quick add one above." />
+        ) : (
+          groups.todos.map((entry) => {
+            const dl = todoDeadline(entry);
+            return activeRow(entry, {
+              overdue: dl != null && dl.getTime() <= now.getTime(),
+            });
+          })
+        )}
+      </ul>
     </Section>
   );
 
+  const newButton = (
+    <button
+      onClick={() => setModal({ mode: "create" })}
+      title="New entry (N)"
+      className="btn-primary px-3.5 sm:py-1.5"
+    >
+      <Plus className="h-4 w-4" strokeWidth={2.5} />
+      New
+    </button>
+  );
+
+  const hasArchive = groups.archive.length > 0 || archivedPartnerGoals > 0;
+
   return (
     // Centred like the other tabs; only the xl two-column board goes full-width.
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 pb-28 sm:px-6 desk:pb-8 xl:max-w-none">
-      {/* header */}
-      <div className="flex items-center gap-2.5">
-        <h1 className="title-lg">Planner</h1>
-        {/* The section headers already carry the counts; on a phone the title
-            row only has room for the two actions. */}
-        <span className="hidden text-sm text-neutral-500 sm:inline">
-          {groups.review.length} to review
-        </span>
-        <div className="ml-auto flex items-center gap-2">
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 pt-5 pb-page sm:px-6 sm:pt-6 xl:max-w-none">
+      <PageHeader
+        title="Planner"
+        meta={
+          // The section headers carry the counts; on a phone the title row
+          // only has room for the actions.
+          groups.review.length > 0 && (
+            <span className="hidden sm:inline">
+              {groups.review.length} to review
+            </span>
+          )
+        }
+        actions={
+          <>
+            <button
+              onClick={() => (searchOpen ? setSearchOpen(false) : openSearch())}
+              className="icon-btn bg-neutral-800 text-neutral-200"
+              aria-label="Search"
+              aria-expanded={searchOpen}
+              title="Search (/)"
+            >
+              <Search className="h-[18px] w-[18px]" />
+            </button>
+            <button
+              onClick={() => setProjectsOpen(true)}
+              className="btn-plain px-3 sm:py-1.5"
+              aria-label="Projects"
+              title="Projects"
+            >
+              <FolderCog className="h-[18px] w-[18px] sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Projects</span>
+            </button>
+            {newButton}
+          </>
+        }
+        compactActions={newButton}
+      />
+
+      {/* search: opens on demand and gets out of the way when empty */}
+      {(searchOpen || search) && (
+        <div className="relative mt-3 sm:max-w-md">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+          <input
+            ref={searchRef}
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onBlur={() => {
+              if (!search.trim()) setSearchOpen(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setSearch("");
+                setSearchOpen(false);
+              }
+            }}
+            placeholder="Search by title…"
+            aria-label="Search by title"
+            enterKeyHint="search"
+            className="field pl-10 pr-11"
+          />
           <button
-            onClick={() => setProjectsOpen(true)}
-            className="btn-plain px-3 py-1.5"
+            // Keep the focus in the field while clearing it.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              setSearch("");
+              setSearchOpen(false);
+            }}
+            className="icon-btn absolute right-0.5 top-1/2 -translate-y-1/2"
+            aria-label="Clear search"
           >
-            <FolderKanban className="h-4 w-4" />
-            Projects
-          </button>
-          <button
-            onClick={() => setModal({ mode: "create" })}
-            title="New entry (N)"
-            className="btn-primary px-3.5 py-1.5"
-          >
-            <Plus className="h-4 w-4" />
-            New
+            <X className="h-4 w-4" />
           </button>
         </div>
-      </div>
+      )}
 
       {/* filters */}
-      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-neutral-800/80 pb-4">
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <div className="segmented">
           {TYPE_FILTERS.map((f) => (
             <button
               key={f.key}
               onClick={() => setTypeFilter(f.key)}
-              data-active={typeFilter === f.key}
+              aria-pressed={typeFilter === f.key}
             >
               {f.label}
             </button>
@@ -778,102 +855,28 @@ export default function PlannerView({
         <button
           onClick={() => setShowEvents((v) => !v)}
           disabled={typeFilter !== "all"}
+          aria-pressed={showEvents && typeFilter === "all"}
           title={
             typeFilter !== "all"
               ? "Events show with the All filter"
               : "Show upcoming events in the list"
           }
-          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors disabled:opacity-40 ${
-            showEvents && typeFilter === "all"
-              ? "border-neutral-600 bg-neutral-800 text-neutral-100"
-              : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
-          }`}
+          className="chip disabled:opacity-40"
         >
-          {showEvents ? (
+          {showEvents && typeFilter === "all" ? (
             <Eye className="h-3.5 w-3.5" />
           ) : (
             <EyeOff className="h-3.5 w-3.5" />
           )}
           Events
         </button>
-        {categories.length > 0 && (
-          <>
-            {/* desktop: chips. phones: a compact dropdown so the projects
-                don't eat several rows of the filter bar. */}
-            <div className="hidden flex-wrap items-center gap-1.5 sm:flex">
-              <ProjectChip
-                active={projectFilter === "all"}
-                onClick={() => setProjectFilter("all")}
-                label="All projects"
-              />
-              {categories.map((c) => (
-                <ProjectChip
-                  key={c.id}
-                  active={projectFilter === c.id}
-                  onClick={() => setProjectFilter(c.id)}
-                  label={c.name}
-                />
-              ))}
-            </div>
-            <select
-              value={projectFilter}
-              onChange={(e) => setProjectFilter(e.target.value)}
-              aria-label="Filter by project"
-              className={`${inputClass} max-w-40 py-1.5 text-xs sm:hidden`}
-            >
-              <option value="all">All projects</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-        {/* search: an icon that expands on demand and collapses when empty */}
-        <div className="ml-auto">
-          {searchOpen || search ? (
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-600" />
-              <input
-                ref={searchRef}
-                autoFocus
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onBlur={() => {
-                  if (!search.trim()) setSearchOpen(false);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setSearch("");
-                    setSearchOpen(false);
-                  }
-                }}
-                placeholder="Search…"
-                className={`${inputClass} w-40 py-1.5 pl-8 text-xs sm:w-52`}
-              />
-              {search && (
-                <button
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setSearch("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-neutral-500 hover:text-neutral-200"
-                  aria-label="Clear search"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-          ) : (
-            <button
-              onClick={() => setSearchOpen(true)}
-              className="rounded-xl bg-neutral-800 p-2 text-neutral-300 transition-opacity active:opacity-70"
-              aria-label="Search"
-              title="Search (/)"
-            >
-              <Search className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+      </div>
+      <div className="mt-2.5 border-b border-neutral-800/80 pb-4">
+        <ProjectChips
+          categories={categories}
+          value={projectFilter}
+          onChange={setProjectFilter}
+        />
       </div>
 
       {/* Two-column board on wide screens: the left column holds everything
@@ -884,8 +887,8 @@ export default function PlannerView({
         todoSection
       ) : (
         // min-w-0 on the columns: a grid item defaults to its content's
-        // min-content width, which a long entry title (truncated, so unbreakable)
-        // pushed past the phone viewport.
+        // min-content width, which a long entry title pushed past the phone
+        // viewport.
         <div className="grid items-start gap-x-10 xl:grid-cols-2">
           <div className="min-w-0">
             {reviewSection}
@@ -899,50 +902,53 @@ export default function PlannerView({
       )}
 
       {/* archive */}
-      {groups.archive.length > 0 && (
-        <div className="mt-6">
+      {hasArchive && (
+        <div className="mt-8">
           <button
             onClick={() => setShowArchive((v) => !v)}
-            className="flex items-center gap-1.5 text-sm text-neutral-500 transition-colors hover:text-neutral-300"
+            aria-expanded={showArchive}
+            className="-ml-1 flex min-h-11 items-center gap-1.5 rounded-lg px-1 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-300"
           >
             <ChevronDown
               className={`h-4 w-4 transition-transform ${showArchive ? "" : "-rotate-90"}`}
             />
             Archive
-            <span className="text-neutral-600">{groups.archive.length}</span>
+            {groups.archive.length > 0 && (
+              <span className="font-normal text-neutral-600">
+                {groups.archive.length}
+              </span>
+            )}
           </button>
           {showArchive && (
-            <ul className="mt-3 flex flex-col gap-2">
-              {groups.archive.map((entry) => (
-                <Row
-                  key={entry.id}
-                  entry={entry}
-                  struck
-                  actions={
-                    <>
-                      <span className="mr-1 rounded-md bg-neutral-800 px-2 py-0.5 text-[11px] text-neutral-400">
-                        {STATUS_LABEL[entry.status]}
-                      </span>
-                      <button
-                        onClick={() => resolve(entry, "active")}
-                        className={iconBtn}
-                        aria-label="Reopen"
-                        title="Reopen"
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => remove(entry)}
-                        className={`${iconBtn} hover:text-accent`}
-                        aria-label="Delete"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </>
-                  }
-                />
-              ))}
-            </ul>
+            <>
+              {groups.archive.length > 0 && (
+                <ul className="mt-1 flex flex-col gap-2">
+                  {groups.archive.map(archiveRow)}
+                </ul>
+              )}
+              {archivedPartnerGoals > 0 && (
+                // The Partner track left the tab bar; its record lives on here.
+                <Link
+                  href="/partner"
+                  className="card mt-2 flex items-center gap-3 px-4 py-3 transition-opacity active:opacity-60"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-neutral-400">
+                    <Archive className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-neutral-100">
+                      Partner track
+                    </span>
+                    <span className="block text-xs text-neutral-500">
+                      Archived · {archivedPartnerGoals} weekly{" "}
+                      {archivedPartnerGoals === 1 ? "goal" : "goals"} and their
+                      notes
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-neutral-600" />
+                </Link>
+              )}
+            </>
           )}
         </div>
       )}
@@ -959,7 +965,7 @@ export default function PlannerView({
                     : typeFilter === "todo"
                       ? "todo"
                       : "task",
-                  defaultStart(),
+                  nextHalfHour(),
                   typeFilter === "goal",
                 )
           }
@@ -968,7 +974,7 @@ export default function PlannerView({
           onDelete={
             modal.mode === "edit"
               ? () => {
-                  remove((modal as { entry: Entry }).entry);
+                  remove(modal.entry);
                   setModal(null);
                 }
               : undefined
@@ -980,7 +986,9 @@ export default function PlannerView({
       {planEntry && (
         <PlanModal
           entry={planEntry}
-          onSchedule={(start, end) => schedule(planEntry, start, end)}
+          onSchedule={(start, end, allDay) =>
+            schedule(planEntry, start, end, allDay)
+          }
           onUnschedule={() => unschedule(planEntry)}
           onClose={() => setPlanEntry(null)}
         />
@@ -991,91 +999,128 @@ export default function PlannerView({
           categories={categories}
           setCategories={setCategories}
           tasks={entries.filter((e) => e.status === "active" && e.type !== "event")}
-          onError={showError}
+          onError={showToast}
           onClose={() => setProjectsOpen(false)}
         />
       )}
 
-      <Toast message={toast} />
+      <Toast message={toast} onDismiss={dismissToast} />
       <RewardToast reward={reward} />
     </div>
   );
 }
 
-function ProjectChip({
-  active,
+/**
+ * The round (task), square (to-do) or trophy (goal) mark that resolves an entry
+ * in one tap — the shape says what kind of thing it is. A full 44px target
+ * around a quiet 22px ring.
+ */
+function CheckButton({
+  entry,
+  disabled,
   onClick,
-  label,
 }: {
-  active: boolean;
+  entry: Entry;
+  disabled?: boolean;
   onClick: () => void;
-  label: string;
 }) {
+  const isGoal = entry.type === "goal";
+  const label = isGoal ? "Mark achieved" : "Mark done";
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-        active
-          ? "border-neutral-600 bg-neutral-800 text-neutral-100"
-          : "border-neutral-800 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
-      }`}
+      disabled={disabled}
+      aria-label={`${label}: ${entry.title}`}
+      title={label}
+      className="group/check flex h-11 w-11 shrink-0 items-center justify-center disabled:opacity-40"
     >
-      {label}
+      <span
+        className={`flex h-[22px] w-[22px] items-center justify-center border-[1.5px] border-neutral-600 text-transparent transition-colors group-hover/check:border-accent-bright group-hover/check:text-accent-bright group-active/check:border-accent group-active/check:bg-accent group-active/check:text-white ${
+          entry.type === "todo" ? "rounded-[7px]" : "rounded-full"
+        }`}
+      >
+        {isGoal ? (
+          <Trophy className="h-3 w-3 text-neutral-500 transition-colors group-hover/check:text-accent-bright group-active/check:text-white" />
+        ) : (
+          <Check className="h-3.5 w-3.5" strokeWidth={3} />
+        )}
+      </span>
     </button>
   );
 }
 
-function Section({
-  title,
-  count,
-  hint,
-  collapsed,
-  onToggle,
-  beforeList,
-  action,
-  children,
-}: {
-  title: string;
-  count: number;
-  hint?: string;
-  collapsed: boolean;
-  onToggle: () => void;
-  /** Rendered between the header and the list (e.g. an inline add form). */
-  beforeList?: React.ReactNode;
-  /** Controls pinned to the right of the header (kept outside the toggle). */
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
+/** The entry's type icon, parked where the check sits on rows that have one. */
+function TypeGlyph({ entry }: { entry: Entry }) {
+  const Icon = ENTRY_TYPE_ICON[entry.type];
   return (
-    <section className="mt-6">
-      {/* the header toggles the section (same pattern as Archive); `action`
-          sits beside it so its controls stay clickable on their own */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onToggle}
-          aria-expanded={!collapsed}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500 transition-colors hover:text-neutral-300"
+    <span className="flex h-11 w-11 shrink-0 items-center justify-center text-neutral-500">
+      <Icon className="h-4 w-4" aria-label={entry.type} />
+    </span>
+  );
+}
+
+function EntryRow({
+  entry,
+  project,
+  struck,
+  overdue,
+  onOpen,
+  leading,
+  actions,
+}: {
+  entry: Entry;
+  project?: Category;
+  struck?: boolean;
+  overdue?: boolean;
+  onOpen: () => void;
+  leading: React.ReactNode;
+  actions: React.ReactNode;
+}) {
+  const deadline = entry.type === "todo" ? todoDeadline(entry) : null;
+  return (
+    <li className="card flex items-center py-1 pl-1 pr-1.5">
+      {leading}
+      <button onClick={onOpen} className="min-w-0 flex-1 py-2 pr-2 text-left">
+        <p
+          className={`line-clamp-2 text-sm leading-snug sm:line-clamp-1 ${
+            struck ? "text-neutral-500 line-through" : "text-neutral-100"
+          }`}
         >
-          <ChevronDown
-            className={`h-3.5 w-3.5 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`}
-          />
-          {title}
-          <span className="font-normal text-neutral-600">{count}</span>
-          {hint && !collapsed && (
-            <span className="ml-2 hidden font-normal normal-case tracking-normal text-neutral-600 sm:inline">
-              {hint}
-            </span>
-          )}
-        </button>
-        {action}
-      </div>
-      {!collapsed && (
-        <>
-          {beforeList}
-          <ul className="mt-2 flex flex-col gap-2">{children}</ul>
-        </>
-      )}
-    </section>
+          {entry.title}
+        </p>
+        {(project || deadline || (entry.type !== "todo" && entry.start_at)) && (
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-neutral-500">
+            {project && (
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: project.color }}
+                  aria-hidden
+                />
+                <span className="truncate">{project.name}</span>
+              </span>
+            )}
+            {deadline && (
+              <span className={overdue ? "text-accent-bright" : ""}>
+                {overdue ? "was due " : "due "}
+                {formatDMY(deadline)}
+              </span>
+            )}
+            {entry.type !== "todo" && entry.start_at && (
+              <span className={overdue ? "text-accent-bright" : ""}>
+                {overdue ? "was due " : ""}
+                {formatDMY(new Date(entry.start_at))}
+                {entry.all_day
+                  ? allDayRangeSuffix(entry)
+                  : ` · ${formatTime(new Date(entry.start_at))}`}
+              </span>
+            )}
+          </div>
+        )}
+      </button>
+      <div className="flex shrink-0 items-center">{actions}</div>
+    </li>
   );
 }
 
@@ -1085,10 +1130,4 @@ function EmptyHint({ text }: { text: string }) {
       {text}
     </li>
   );
-}
-
-function defaultStart() {
-  const d = new Date();
-  d.setHours(9, 0, 0, 0);
-  return d;
 }

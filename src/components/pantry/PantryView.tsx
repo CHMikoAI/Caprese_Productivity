@@ -8,14 +8,16 @@ import {
   CheckCircle2,
   Gift,
   Layers,
+  ListChecks,
   Trophy,
-  X,
 } from "lucide-react";
 import { craftSalad, drawCards, redeemSalad } from "@/app/actions";
+import PageHeader from "@/components/PageHeader";
 import FlipCard from "@/components/pantry/FlipCard";
 import PantryArt from "@/components/pantry/PantryArt";
+import Sheet from "@/components/Sheet";
 import Toast, { useToast } from "@/components/Toast";
-import { useEscape, useShortcuts } from "@/lib/useShortcuts";
+import { useShortcuts } from "@/lib/useShortcuts";
 import { formatDMY } from "@/lib/dates";
 import {
   canCraft,
@@ -24,6 +26,7 @@ import {
   PICKS_FOR,
   SALAD_RECIPE,
   STREAK_MILESTONE,
+  TODO_BATCH,
   type Ingredient,
   type Inventory,
   type Salad,
@@ -47,7 +50,7 @@ export default function PantryView({
   art: ArtMap;
 }) {
   const router = useRouter();
-  const { message: toast, show: showError } = useToast();
+  const { message: toast, show: showError, dismiss: dismissToast } = useToast();
 
   const [picks, setPicks] = useState(initialPicks);
   const [inventory, setInventory] = useState(initialInventory);
@@ -186,20 +189,25 @@ export default function PantryView({
   // ----- render -----
 
   return (
-    <div className="mx-auto w-full max-w-4xl flex-1 px-4 py-6 pb-28 sm:px-6 desk:pb-8">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="title-lg">Pantry</h1>
-        <span className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-3 py-1 text-sm text-neutral-200">
-          <Layers className="h-3.5 w-3.5 text-accent" />
-          <span key={picks} className="inline-block animate-count-pulse font-semibold">
-            {picks}
+    <div className="mx-auto w-full max-w-4xl flex-1 px-4 pt-5 pb-page sm:px-6 sm:pt-6">
+      <PageHeader
+        title="Pantry"
+        meta={
+          <span className="flex items-center gap-1.5 rounded-full bg-neutral-900 px-3 py-1 text-sm text-neutral-200">
+            <Layers className="h-3.5 w-3.5 text-accent" />
+            <span
+              key={picks}
+              className="inline-block animate-count-pulse font-semibold tabular-nums"
+            >
+              {picks}
+            </span>
+            {picks === 1 ? "pick" : "picks"}
           </span>
-          {picks === 1 ? "pick" : "picks"}
-        </span>
-      </div>
+        }
+      />
 
       {/* ---- draw area ---- */}
-      <section className={`mt-5 ${panelClass} p-5`}>
+      <section className={`mt-4 ${panelClass} p-5`}>
         {table.length === 0 ? (
           picks > 0 ? (
             <div className="flex flex-col items-center gap-4 py-6 sm:flex-row sm:justify-center sm:gap-8">
@@ -223,7 +231,7 @@ export default function PantryView({
                     onClick={() => draw(1)}
                     disabled={busyDraw}
                     title="Draw (D)"
-                    className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                    className="btn-primary"
                   >
                     Draw 1 card
                   </button>
@@ -231,7 +239,7 @@ export default function PantryView({
                     <button
                       onClick={() => draw(picks)}
                       disabled={busyDraw}
-                      className="btn-plain disabled:opacity-40"
+                      className="btn-plain"
                     >
                       Draw all {picks}
                     </button>
@@ -289,6 +297,10 @@ export default function PantryView({
           <span className="flex items-center gap-1.5">
             <Trophy className="h-3.5 w-3.5" />
             Goal achieved +{PICKS_FOR.goal}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <ListChecks className="h-3.5 w-3.5" />
+            {TODO_BATCH} to-dos done +{PICKS_FOR.todoBatch}
           </span>
           <span className="flex items-center gap-1.5">
             <Gift className="h-3.5 w-3.5" />
@@ -390,7 +402,7 @@ export default function PantryView({
             <button
               onClick={craft}
               disabled={!craftable || busyCraft}
-              className="mt-4 w-full rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              className="btn-primary mt-4 w-full"
             >
               {busyCraft ? "Crafting…" : "Craft salad"}
             </button>
@@ -399,7 +411,7 @@ export default function PantryView({
       </div>
 
       {/* ---- salads ---- */}
-      <section className="mt-8 pb-8">
+      <section className="mt-8">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
           Salads
           <span className="ml-2 font-normal text-neutral-600">
@@ -442,10 +454,7 @@ export default function PantryView({
                   : `${readySalads.length} salads ready — treat yourself to something.`}
               </p>
             </div>
-            <button
-              onClick={() => setRedeeming(true)}
-              className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-            >
+            <button onClick={() => setRedeeming(true)} className="btn-primary">
               <Gift className="h-4 w-4" />
               Redeem one
             </button>
@@ -476,7 +485,7 @@ export default function PantryView({
         <RedeemModal onConfirm={redeem} onClose={() => setRedeeming(false)} />
       )}
 
-      <Toast message={toast} />
+      <Toast message={toast} onDismiss={dismissToast} />
     </div>
   );
 }
@@ -489,55 +498,39 @@ function RedeemModal({
   onClose: () => void;
 }) {
   const [note, setNote] = useState("");
-  useEscape(onClose);
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 sm:items-center"
-      onClick={onClose}
-    >
-      <div
-        className="my-auto w-full max-w-md animate-sheet-up rounded-2xl bg-neutral-900 p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-neutral-100">
-            Redeem a salad
-          </h3>
-          <button
-            onClick={onClose}
-            className="rounded-md p-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
-            aria-label="Close"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <p className="mt-1 text-sm text-neutral-500">
-          One salad, one private treat. What are you claiming?
-        </p>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="e.g. movie night, a fancy coffee, new book…"
-          rows={2}
-          autoFocus
-          className="field mt-3 resize-none leading-relaxed"
-        />
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            onClick={onClose}
-            className="btn-plain"
-          >
+    <Sheet
+      title="Redeem a salad"
+      icon={<Gift className="h-5 w-5 shrink-0 text-accent" />}
+      onClose={onClose}
+      onSubmit={(e) => {
+        e.preventDefault();
+        onConfirm(note);
+      }}
+      footer={(close) => (
+        <div className="ml-auto flex gap-2">
+          <button type="button" onClick={close} className="btn-ghost">
             Cancel
           </button>
-          <button
-            onClick={() => onConfirm(note)}
-            className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
-          >
+          <button type="submit" className="btn-primary">
             Redeem
           </button>
         </div>
-      </div>
-    </div>
+      )}
+    >
+      <p className="text-sm text-neutral-400">
+        One salad, one private treat. What are you claiming?
+      </p>
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="e.g. movie night, a fancy coffee, new book…"
+        aria-label="What you are treating yourself to"
+        rows={2}
+        autoFocus
+        className="field mt-3 resize-none leading-relaxed"
+      />
+    </Sheet>
   );
 }
 

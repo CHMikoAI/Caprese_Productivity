@@ -2,61 +2,147 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookText, CalendarDays, FolderKanban, Heart, Lightbulb } from "lucide-react";
+import PantryArt from "@/components/pantry/PantryArt";
+import { NAV_TABS, PANTRY_ROUTE, isActiveRoute } from "@/lib/nav";
+import { scrollAppToTop } from "@/lib/scroll";
 
-const TABS = [
-  { href: "/calendar", label: "Calendar", Icon: CalendarDays },
-  { href: "/planner", label: "Planner", Icon: FolderKanban },
-  { href: "/thoughts", label: "Thoughts", Icon: Lightbulb },
-  { href: "/journal", label: "Journal", Icon: BookText },
-  { href: "/partner", label: "Partner", Icon: Heart },
-] as const;
+/** Fired when the tab that is already open is tapped again. */
+export const TAB_RESELECT_EVENT = "caprese:tab-reselect";
 
 /**
- * Phone-only primary navigation: a thumb-reachable tab bar in the iOS mould —
- * a hairline on top, big icons with a small label, tinted with the accent when
- * selected. It is the last row of the app shell (not floating), so it holds the
- * same height on every page. Shown on every phone viewport — portrait *and*
- * landscape (see the `phone` variant in globals.css); only real desktops move
- * the tabs to the top bar. Pantry lives off the bottom bar on phones — it's
- * reached via the salad icon in the top bar instead.
+ * Phone-only primary navigation: a glass pill that floats over the page, the
+ * way current iOS apps do it. The page runs full-screen underneath — content
+ * scrolls behind the bar and fades out under it — and every scroller keeps
+ * `--tabbar-space` free at its end so the last row can always be brought clear
+ * (see globals.css).
+ *
+ * It is positioned inside the app shell, not against the viewport: the document
+ * never scrolls, so the bar cannot ride along with mobile Safari's toolbar.
+ * Shown on every phone viewport, portrait and landscape (the `phone` variant);
+ * real desktops carry the tabs in the top bar instead.
+ *
+ * Pantry closes the row with the salad tracker as its icon: salads ready to
+ * redeem at the bottom, picks waiting to be drawn as the red badge.
  */
-export default function BottomNav() {
+export default function BottomNav({
+  pantryPicks = 0,
+  saladsReady = 0,
+  saladArt = "/pantry/salad.svg",
+}: {
+  pantryPicks?: number;
+  saladsReady?: number;
+  saladArt?: string;
+}) {
   const pathname = usePathname();
+  const hrefs = [...NAV_TABS.map((tab) => tab.href), PANTRY_ROUTE.href];
+  const activeIndex = hrefs.findIndex((href) => isActiveRoute(pathname, href));
+
+  // Tapping the tab you are on takes you back to the top (the calendar jumps
+  // to today) — the iOS convention.
+  function onTabClick(e: React.MouseEvent, href: string, active: boolean) {
+    if (!active) return;
+    e.preventDefault();
+    scrollAppToTop();
+    window.dispatchEvent(new CustomEvent(TAB_RESELECT_EVENT, { detail: href }));
+  }
+
+  const tabClass = (active: boolean) =>
+    `relative z-10 flex min-w-0 flex-1 flex-col items-center justify-center gap-[3px] rounded-full text-[10px] font-medium leading-none transition-[color,transform] duration-200 active:scale-90 ${
+      active ? "text-accent-bright" : "text-neutral-400"
+    }`;
+
+  const pantryActive = isActiveRoute(pathname, PANTRY_ROUTE.href);
+  const pantryLabel = [
+    PANTRY_ROUTE.label,
+    pantryPicks > 0
+      ? `${pantryPicks} ${pantryPicks === 1 ? "pick" : "picks"} to draw`
+      : null,
+    saladsReady > 0
+      ? `${saladsReady} ${saladsReady === 1 ? "salad" : "salads"} ready`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <nav
-      className="hidden shrink-0 border-t border-neutral-800 bg-neutral-950 phone:block phone:pt-2"
-      // Even air around the icons: a little under the hairline, and a clearance
-      // below the labels that stays well under the full home-indicator inset
-      // (~14px on iPhone) instead of the ~34px "dead" strip iOS reserves.
-      style={{
-        paddingBottom: "max(0.5rem, calc(env(safe-area-inset-bottom) - 1.25rem))",
-      }}
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-40 hidden phone:block"
       aria-label="Primary"
     >
-      <div className="flex h-11 items-stretch">
-        {TABS.map(({ href, label, Icon }) => {
-          const active = pathname.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              aria-label={label}
-              aria-current={active ? "page" : undefined}
-              className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-medium leading-none transition-colors ${
-                active ? "text-accent" : "text-neutral-500"
-              }`}
-            >
-              <Icon
-                className="h-7 w-7"
-                strokeWidth={active ? 2.3 : 1.9}
-                aria-hidden
-              />
-              {label}
-            </Link>
-          );
-        })}
+      {/* Content fades out under the bar instead of colliding with it. */}
+      <div
+        className="absolute inset-x-0 bottom-0 h-[calc(var(--tabbar-space)+1.25rem)] bg-gradient-to-t from-black via-black/70 to-transparent"
+        aria-hidden
+      />
+      <div className="relative mx-auto max-w-md px-3 pb-[var(--tabbar-bottom)]">
+        <div className="glass pointer-events-auto relative flex h-[var(--tabbar-h)] items-stretch rounded-full p-1 shadow-[0_8px_32px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
+          {/* the selection: one capsule that slides to the open tab */}
+          <span
+            aria-hidden
+            className="absolute inset-y-1 left-1 rounded-full bg-white/10 transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
+            style={{
+              width: `calc((100% - 0.5rem) / ${hrefs.length})`,
+              transform: `translateX(${Math.max(activeIndex, 0) * 100}%)`,
+              opacity: activeIndex < 0 ? 0 : 1,
+            }}
+          />
+
+          {NAV_TABS.map(({ href, label, Icon }) => {
+            const active = isActiveRoute(pathname, href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={(e) => onTabClick(e, href, active)}
+                aria-current={active ? "page" : undefined}
+                className={tabClass(active)}
+              >
+                <Icon
+                  className="h-6 w-6"
+                  strokeWidth={active ? 2.2 : 1.8}
+                  aria-hidden
+                />
+                <span className="max-w-full truncate px-0.5">{label}</span>
+              </Link>
+            );
+          })}
+
+          <Link
+            href={PANTRY_ROUTE.href}
+            onClick={(e) => onTabClick(e, PANTRY_ROUTE.href, pantryActive)}
+            aria-current={pantryActive ? "page" : undefined}
+            aria-label={pantryLabel}
+            className={tabClass(pantryActive)}
+          >
+            <span className="relative flex h-6 w-6 items-center justify-center">
+              <span
+                className={`flex h-[26px] w-[26px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#F6F1E7] ring-[1.5px] transition-shadow ${
+                  pantryActive ? "ring-accent-bright" : "ring-transparent"
+                }`}
+              >
+                <PantryArt
+                  src={saladArt}
+                  alt=""
+                  size={22}
+                  className="h-[22px] w-[22px] object-contain"
+                />
+              </span>
+              {pantryPicks > 0 && (
+                <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular-nums leading-none text-white ring-2 ring-neutral-900">
+                  {pantryPicks > 99 ? "99+" : pantryPicks}
+                </span>
+              )}
+              {saladsReady > 0 && (
+                <span className="absolute -bottom-1 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-neutral-100 px-1 text-[10px] font-bold tabular-nums leading-none text-neutral-950 ring-2 ring-neutral-900">
+                  {saladsReady > 99 ? "99+" : saladsReady}
+                </span>
+              )}
+            </span>
+            <span className="max-w-full truncate px-0.5" aria-hidden>
+              {PANTRY_ROUTE.label}
+            </span>
+          </Link>
+        </div>
       </div>
     </nav>
   );

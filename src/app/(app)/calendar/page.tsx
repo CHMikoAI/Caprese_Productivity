@@ -1,5 +1,7 @@
 import WeekCalendar from "@/components/calendar/WeekCalendar";
+import ClientOnly from "@/components/ClientOnly";
 import SetupBanner from "@/components/SetupBanner";
+import { CalendarSkeleton } from "@/components/Skeleton";
 import { getSupabase } from "@/lib/supabase";
 import type { Category, Entry, JournalEntry } from "@/lib/types";
 
@@ -25,11 +27,13 @@ export default async function CalendarPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {!sb && <SetupBanner />}
-      <WeekCalendar
-        initialEntries={entries}
-        categories={categories}
-        journalEntries={journalEntries}
-      />
+      <ClientOnly fallback={<CalendarSkeleton />}>
+        <WeekCalendar
+          initialEntries={entries}
+          categories={categories}
+          journalEntries={journalEntries}
+        />
+      </ClientOnly>
     </div>
   );
 }

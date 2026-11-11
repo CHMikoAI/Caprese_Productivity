@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { PARTNER_ARCHIVED } from "@/lib/features";
 import { getSupabase } from "@/lib/supabase";
 import { sanitizeHtml } from "@/lib/sanitize";
 import {
@@ -215,6 +216,33 @@ export async function deleteEntry(id: string): Promise<void> {
   refreshPlanning();
 }
 
+/**
+ * Put a just-deleted entry back exactly as it was — the Undo on a delete. The
+ * row keeps its id, so picks already paid for it stay keyed to it and
+ * completing it again never pays twice.
+ */
+export async function restoreEntry(entry: Entry): Promise<void> {
+  const { error } = await db()
+    .from("entries")
+    .upsert(
+      {
+        id: entry.id,
+        type: entry.type,
+        title: entry.title,
+        category_id: entry.category_id,
+        start_at: entry.start_at,
+        end_at: entry.end_at,
+        all_day: entry.all_day,
+        description: entry.description ? sanitizeHtml(entry.description) : null,
+        status: entry.status,
+        created_at: entry.created_at,
+      },
+      { onConflict: "id" },
+    );
+  if (error) throw new Error(error.message);
+  refreshPlanning();
+}
+
 /** Drop an unscheduled task/goal onto the calendar: give it a time. */
 export async function scheduleEntry(
   id: string,
@@ -230,14 +258,19 @@ export async function scheduleEntry(
 }
 
 /**
- * Push a task's slot to a future date (keeping its time-of-day and duration),
- * so an overdue item becomes upcoming again. Also re-activates it. A concrete
- * slot means it is no longer all-day.
+ * Give a task or goal a (new) slot from the Plan dialog, so an overdue item
+ * becomes upcoming again. Also re-activates it. `allDay` plans it for whole
+ * days — start and end are then local midnights — rather than a time slot.
  */
-export async function postponeEntry(id: string, startAt: string, endAt: string) {
+export async function postponeEntry(
+  id: string,
+  startAt: string,
+  endAt: string,
+  allDay = false,
+) {
   const { error } = await db()
     .from("entries")
-    .update({ start_at: startAt, end_at: endAt, all_day: false, status: "active" })
+    .update({ start_at: startAt, end_at: endAt, all_day: allDay, status: "active" })
     .eq("id", id);
   if (error) throw new Error(error.message);
   refreshPlanning();
@@ -299,6 +332,15 @@ export async function deleteJournalEntry(id: string): Promise<void> {
 
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * The Partner track is archived (lib/features.ts): its record is read-only.
+ * The page no longer offers any of these mutations — this keeps the actions
+ * themselves, which are callable endpoints, honest about it too.
+ */
+function assertPartnerActive() {
+  if (PARTNER_ARCHIVED) throw new Error("The Partner track is archived.");
+}
+
 function weekKey(value: string): string {
   if (!DATE_KEY.test(value)) throw new Error("Invalid week.");
   return value;
@@ -317,6 +359,7 @@ export async function createPartnerGoal(
   weekStart: string,
   title: string,
 ): Promise<PartnerGoal> {
+  assertPartnerActive();
   const week = weekKey(weekStart);
   const clean = title.trim();
   if (!clean) throw new Error("A goal needs a title.");
@@ -344,6 +387,7 @@ export async function updatePartnerGoal(
     outcome?: PartnerOutcome | null;
   },
 ): Promise<PartnerGoal> {
+  assertPartnerActive();
   const clean: {
     title?: string;
     notes?: string | null;
@@ -400,6 +444,7 @@ export async function completePartnerGoal(
   weekBonus: number;
   weekComplete: boolean;
 }> {
+  assertPartnerActive();
   const notes = debrief.notes.trim();
   if (notes.length < PARTNER_NOTE_MIN) {
     throw new Error("Add a short note before closing this goal.");
@@ -456,6 +501,7 @@ export async function completePartnerGoal(
 
 /** Reopen a closed goal. The debrief stays — it was still true. */
 export async function reopenPartnerGoal(id: string): Promise<PartnerGoal> {
+  assertPartnerActive();
   const { data, error } = await db()
     .from("partner_goals")
     .update({ done_at: null })
@@ -472,6 +518,7 @@ export async function savePartnerTakeaway(
   weekStart: string,
   takeaway: string,
 ): Promise<void> {
+  assertPartnerActive();
   const week = weekKey(weekStart);
   const clean = takeaway.trim();
   const { error } = await db()
@@ -489,6 +536,7 @@ export async function savePartnerTakeaway(
 }
 
 export async function deletePartnerGoal(id: string): Promise<void> {
+  assertPartnerActive();
   const { error } = await db().from("partner_goals").delete().eq("id", id);
   if (error) throw new Error(error.message);
   revalidatePath("/partner");
@@ -502,6 +550,7 @@ export async function repeatPartnerWeek(
   fromWeek: string,
   toWeek: string,
 ): Promise<PartnerGoal[]> {
+  assertPartnerActive();
   const from = weekKey(fromWeek);
   const to = weekKey(toWeek);
   const sb = db();
@@ -536,16 +585,25 @@ function htmlIsEmpty(html: string): boolean {
   return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").trim() === "";
 }
 
-/** Capture a thought from any tab (the global FAB) — voice or typed text. */
+/**
+ * Capture a thought on the Thoughts tab — a voice note or typed text. With a
+ * project it is filed at once; without one it lands in the inbox to be sorted.
+ */
 export async function createThought(
   content: string,
   source: ThoughtSource,
+  projectId: string | null = null,
 ): Promise<Thought> {
   const clean = sanitizeHtml(content);
   if (htmlIsEmpty(clean)) throw new Error("A thought needs some content.");
   const { data, error } = await db()
     .from("thoughts")
-    .insert({ content: clean, source })
+    .insert({
+      content: clean,
+      source,
+      linked_project_id: projectId,
+      triaged: projectId != null,
+    })
     .select()
     .single();
   if (error) throw new Error(error.message);
@@ -606,6 +664,36 @@ export async function setThoughtArchived(
     .from("thoughts")
     .update({ archived_at: archived ? new Date().toISOString() : null })
     .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/thoughts");
+}
+
+/** Delete a thought for good. Only offered on completed (archived) thoughts. */
+export async function deleteThought(id: string): Promise<void> {
+  const { error } = await db().from("thoughts").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/thoughts");
+}
+
+/** Put a just-deleted thought back exactly as it was — the Undo on a delete. */
+export async function restoreThought(thought: Thought): Promise<void> {
+  const clean = sanitizeHtml(thought.content);
+  if (htmlIsEmpty(clean)) throw new Error("A thought needs some content.");
+  const { error } = await db()
+    .from("thoughts")
+    .upsert(
+      {
+        id: thought.id,
+        content: clean,
+        source: thought.source,
+        linked_project_id: thought.linked_project_id,
+        triaged: thought.linked_project_id != null,
+        archived_at: thought.archived_at,
+        created_at: thought.created_at,
+        updated_at: thought.updated_at,
+      },
+      { onConflict: "id" },
+    );
   if (error) throw new Error(error.message);
   revalidatePath("/thoughts");
 }

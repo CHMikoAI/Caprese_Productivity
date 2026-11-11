@@ -1,4 +1,6 @@
+import ClientOnly from "@/components/ClientOnly";
 import SetupBanner from "@/components/SetupBanner";
+import { ListSkeleton } from "@/components/Skeleton";
 import ThoughtsView from "@/components/thoughts/ThoughtsView";
 import { getSupabase } from "@/lib/supabase";
 import type { Category, Thought } from "@/lib/types";
@@ -22,7 +24,9 @@ export default async function ThoughtsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {!sb && <SetupBanner />}
-      <ThoughtsView initialThoughts={thoughts} categories={categories} />
+      <ClientOnly fallback={<ListSkeleton />}>
+        <ThoughtsView initialThoughts={thoughts} categories={categories} />
+      </ClientOnly>
     </div>
   );
 }

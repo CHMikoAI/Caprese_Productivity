@@ -6,9 +6,11 @@ import { ChevronLeft, ChevronRight, PanelRight, Plus } from "lucide-react";
 import {
   createEntry,
   deleteEntry,
+  restoreEntry,
   scheduleEntry,
   updateEntry,
 } from "@/app/actions";
+import { TAB_RESELECT_EVENT } from "@/components/BottomNav";
 import {
   addDays,
   addMinutes,
@@ -65,6 +67,36 @@ const VIEW_OPTIONS: {
 
 const MOBILE_MEDIA = "(max-width: 639px)"; // Tailwind's `sm` breakpoint
 
+/** The views a layout offers (phones and desktop each have their own set). */
+function allowedViews(mobile: boolean): View[] {
+  return VIEW_OPTIONS.filter((v) =>
+    mobile ? v.showOn !== "desktop" : v.showOn !== "mobile",
+  ).map((v) => v.key);
+}
+
+/** Each layout remembers its own last view, so rotating a phone into the wide
+ * layout and back returns to where each one was. */
+function viewStorageKey(mobile: boolean) {
+  return mobile ? `${VIEW_STORAGE_KEY}_phone` : VIEW_STORAGE_KEY;
+}
+
+/** The last view used on this layout, or its default (Day on phones, Week on
+ * desktop) when there is none — or the stored one doesn't exist here. */
+function restoreView(mobile: boolean): View {
+  let stored: string | null = null;
+  try {
+    stored =
+      localStorage.getItem(viewStorageKey(mobile)) ??
+      localStorage.getItem(VIEW_STORAGE_KEY);
+  } catch {
+    /* storage unavailable (private mode) — fall through to the default */
+  }
+  if (stored && allowedViews(mobile).includes(stored as View)) {
+    return stored as View;
+  }
+  return mobile ? "day" : "week";
+}
+
 // Phone paging. The vertical (time) axis is its own scroll container; the
 // horizontal (day) axis is a transform-based pager driven by touch. A gesture
 // locks to a single axis on its first move, so a swipe is *either* vertical or
@@ -98,6 +130,16 @@ type DragState = {
   startMin: number;
   durationMin: number;
 };
+
+/** Where the time grid rests: 07:00 at the top — unless that would leave the
+ * current time below the fold, then far enough down to bring "now" in. */
+function restingScrollTop(el: HTMLElement, showsToday: boolean): number {
+  const base = SCROLL_TO_HOUR * HOUR_PX;
+  if (!showsToday) return base;
+  const nowY = (minutesSinceMidnight(new Date()) / 30) * SLOT_PX;
+  const visible = el.clientHeight * 0.8; // the rest sits under bars
+  return nowY < base + visible ? base : nowY - visible * 0.6;
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -159,10 +201,18 @@ export default function WeekCalendar({
   journalEntries: JournalEntry[];
 }) {
   const router = useRouter();
-  const { message: toast, show: showError } = useToast();
+  const { message: toast, show: showToast, dismiss: dismissToast } = useToast();
 
+  // The calendar only ever renders in the browser (see ClientOnly on the page),
+  // so the layout and the last view used are known for the very first frame —
+  // no desktop week that snaps to Day a moment later on a phone.
+  const [isMobile, setIsMobile] = useState(
+    () => window.matchMedia(MOBILE_MEDIA).matches,
+  );
+  const [view, setView] = useState<View>(() =>
+    restoreView(window.matchMedia(MOBILE_MEDIA).matches),
+  );
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
-  const [view, setView] = useState<View>("week");
   const [entries, setEntries] = useState(initialEntries);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [modal, setModal] = useState<ModalState | null>(null);
@@ -178,7 +228,6 @@ export default function WeekCalendar({
     endMin: number;
   } | null>(null);
   const [now, setNow] = useState(() => new Date());
-  const [isMobile, setIsMobile] = useState(false);
   const [viewportW, setViewportW] = useState(0);
   const [monthW, setMonthW] = useState(0);
 
@@ -228,22 +277,21 @@ export default function WeekCalendar({
     endMin: number;
   } | null>(null);
 
-  useEffect(() => setEntries(initialEntries), [initialEntries]);
+  // Re-adopt server state whenever a fresh payload arrives (router.refresh).
+  const [syncedEntries, setSyncedEntries] = useState(initialEntries);
+  if (syncedEntries !== initialEntries) {
+    setSyncedEntries(initialEntries);
+    setEntries(initialEntries);
+  }
 
   useEffect(() => {
-    const stored = localStorage.getItem(VIEW_STORAGE_KEY) as View | null;
-    const isMobile = window.matchMedia(MOBILE_MEDIA).matches;
-    const allowed = VIEW_OPTIONS.filter((v) =>
-      isMobile ? v.showOn !== "desktop" : v.showOn !== "mobile",
-    ).map((v) => v.key);
-    // Restore the last view when it fits this breakpoint, otherwise fall back
-    // to the breakpoint's default (Day on phones, Week on desktop).
-    if (stored && allowed.includes(stored)) setView(stored);
-    else setView(isMobile ? "day" : "week");
-  }, []);
-  useEffect(() => {
-    localStorage.setItem(VIEW_STORAGE_KEY, view);
-  }, [view]);
+    if (!allowedViews(isMobile).includes(view)) return;
+    try {
+      localStorage.setItem(viewStorageKey(isMobile), view);
+    } catch {
+      /* storage unavailable — the view just isn't remembered */
+    }
+  }, [view, isMobile]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60_000);
@@ -251,20 +299,38 @@ export default function WeekCalendar({
   }, []);
 
   // Track the phone breakpoint: on mobile the day columns fit the viewport and
-  // the grid pages via horizontal swipe instead of scrolling.
+  // the grid pages via horizontal swipe instead of scrolling. Crossing it (a
+  // phone rotated, a window resized) switches to that layout's own view — the
+  // week view has no business on a portrait phone, nor "3 days" on desktop.
   useEffect(() => {
     const mq = window.matchMedia(MOBILE_MEDIA);
-    const update = () => setIsMobile(mq.matches);
-    update();
+    const update = () => {
+      setIsMobile(mq.matches);
+      setView(restoreView(mq.matches));
+    };
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
 
+  const showsTodayRef = useRef(true);
   useEffect(() => {
-    if (view !== "month") {
-      scrollRef.current?.scrollTo({ top: SCROLL_TO_HOUR * HOUR_PX });
+    const el = scrollRef.current;
+    if (view !== "month" && el) {
+      el.scrollTo({ top: restingScrollTop(el, showsTodayRef.current) });
     }
   }, [view, isMobile]);
+
+  // Tapping the Calendar tab while it is open jumps back to today.
+  useEffect(() => {
+    const onReselect = (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== "/calendar") return;
+      setAnchor(startOfDay(new Date()));
+      const el = scrollRef.current;
+      if (el) el.scrollTo({ top: restingScrollTop(el, true), behavior: "smooth" });
+    };
+    window.addEventListener(TAB_RESELECT_EVENT, onReselect);
+    return () => window.removeEventListener(TAB_RESELECT_EVENT, onReselect);
+  }, []);
 
   /** Days shown in one page (what the viewport holds at a time). */
   const daysPerPage = view === "day" ? 1 : view === "3day" ? 3 : 7;
@@ -278,6 +344,11 @@ export default function WeekCalendar({
     const count = view === "workweek" ? 5 : 7;
     return Array.from({ length: count }, (_, i) => addDays(weekStart, i));
   }, [anchor, view]);
+
+  // A layout effect, so the flag is current before the scroll effect reads it.
+  useLayoutEffect(() => {
+    showsTodayRef.current = visibleDays.some((d) => isSameDay(d, new Date()));
+  }, [visibleDays]);
 
   /** Whether the phone paging (windowed days + transform pager) is in effect. */
   const paging = isMobile && (view === "day" || view === "3day");
@@ -797,7 +868,7 @@ export default function WeekCalendar({
       .then(() => router.refresh())
       .catch(() => {
         setEntries(prev);
-        showError("Could not update the entry.");
+        showToast("Could not update the entry.");
       });
   }
 
@@ -835,7 +906,7 @@ export default function WeekCalendar({
       anchorMin: slotIndex * 30,
       startClientX: e.clientX,
       startClientY: e.clientY,
-      startedAt: performance.now(),
+      startedAt: e.timeStamp,
       startScrollTop: scrollRef.current?.scrollTop ?? 0,
       moved: false,
       panned: false,
@@ -895,7 +966,7 @@ export default function WeekCalendar({
     setCreateDrag(null);
     if (!d) return;
     if (!d.moved || !sel) {
-      if (e.pointerType === "touch" && !isTap(d)) return;
+      if (e.pointerType === "touch" && !isTap(d, e.timeStamp)) return;
       openCreateAt(days[dayIndex], slotIndex * 30);
       return;
     }
@@ -910,8 +981,8 @@ export default function WeekCalendar({
     });
   }
 
-  function markScrolled() {
-    lastScrollAtRef.current = performance.now();
+  function markScrolled(e: React.UIEvent) {
+    lastScrollAtRef.current = e.timeStamp;
   }
 
   /**
@@ -920,10 +991,13 @@ export default function WeekCalendar({
    * stayed put, left the scroll position alone, and been quick — and must not
    * be the tap that catches a fling.
    */
-  function isTap(d: { startedAt: number; startScrollTop: number; panned: boolean }) {
+  function isTap(
+    d: { startedAt: number; startScrollTop: number; panned: boolean },
+    endedAt: number,
+  ) {
     if (d.panned) return false;
-    if (performance.now() - d.startedAt > TAP_MAX_MS) return false;
-    if (performance.now() - lastScrollAtRef.current < SCROLL_QUIET_MS) return false;
+    if (endedAt - d.startedAt > TAP_MAX_MS) return false;
+    if (endedAt - lastScrollAtRef.current < SCROLL_QUIET_MS) return false;
     const sc = scrollRef.current;
     if (sc && Math.abs(sc.scrollTop - d.startScrollTop) > 2) return false;
     return true;
@@ -999,7 +1073,7 @@ export default function WeekCalendar({
       .then(() => router.refresh())
       .catch(() => {
         setEntries(prev);
-        showError("Could not schedule the task.");
+        showToast("Could not schedule the task.");
       });
   }
 
@@ -1041,7 +1115,7 @@ export default function WeekCalendar({
         })
         .catch(() => {
           setEntries((list) => list.filter((e) => e.id !== tempId));
-          showError("Could not create the entry.");
+          showToast("Could not create the entry.");
         });
     } else {
       const id = current.entryId!;
@@ -1074,23 +1148,42 @@ export default function WeekCalendar({
         .then(() => router.refresh())
         .catch(() => {
           setEntries(prev);
-          showError("Could not save the entry.");
+          showToast("Could not save the entry.");
         });
     }
   }
 
   function onModalDelete() {
     if (!modal || modal.mode !== "edit" || !modal.entryId) return;
-    const id = modal.entryId;
+    const entry = entries.find((e) => e.id === modal.entryId);
     setModal(null);
-    const prev = entries;
-    setEntries((list) => list.filter((e) => e.id !== id));
-    deleteEntry(id)
+    if (!entry) return;
+    const putBack = () =>
+      setEntries((list) =>
+        list.some((e) => e.id === entry.id) ? list : [...list, entry],
+      );
+    setEntries((list) => list.filter((e) => e.id !== entry.id));
+    const deleted = deleteEntry(entry.id)
       .then(() => router.refresh())
       .catch(() => {
-        setEntries(prev);
-        showError("Could not delete the entry.");
+        putBack();
+        showToast("Could not delete the entry.");
       });
+    // One tap in the dialog and it is gone for good — offer the way back.
+    showToast("Entry deleted", {
+      label: "Undo",
+      run: () => {
+        putBack();
+        // Wait for the delete to land first, or the two would cross.
+        deleted
+          .then(() => restoreEntry(entry))
+          .then(() => router.refresh())
+          .catch(() => {
+            setEntries((list) => list.filter((e) => e.id !== entry.id));
+            showToast("Could not restore the entry.");
+          });
+      },
+    });
   }
 
   // ----- navigation -----
@@ -1122,7 +1215,7 @@ export default function WeekCalendar({
       }),
     t: goToday,
     d: () => setView("day"),
-    w: () => setView("week"),
+    w: () => setView(isMobile ? "3day" : "week"),
     m: () => setView("month"),
     s: () => setSidebarOpen((v) => !v),
     ArrowLeft: goPrev,
@@ -1140,9 +1233,6 @@ export default function WeekCalendar({
       : view === "day"
         ? formatDayLong(visibleDays[0])
         : dateRangeLabel(visibleDays[0], visibleDays[visibleDays.length - 1]);
-
-  const headerButton =
-    "rounded-lg p-2.5 text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-100 sm:p-2";
 
   // While paging each column is exactly one page-slice wide; otherwise the
   // columns share the row as before.
@@ -1354,7 +1444,7 @@ export default function WeekCalendar({
           .then(() => router.refresh())
           .catch(() => {
             setEntries(prev);
-            showError("Could not schedule the task.");
+            showToast("Could not schedule the task.");
           });
       }}
     />
@@ -1362,17 +1452,35 @@ export default function WeekCalendar({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-neutral-800 px-4 py-3 sm:px-6">
-        <h1 className="text-xl font-bold tracking-tight text-neutral-50">
-          {headerMain}
-        </h1>
-        {headerSub && (
-          <span className="text-sm text-neutral-500">{headerSub}</span>
-        )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2.5 border-b border-neutral-800 px-4 pb-3 pt-3 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-baseline gap-x-2.5 sm:flex-none">
+          <h1 className="shrink-0 text-xl font-bold tracking-tight text-neutral-50">
+            {headerMain}
+          </h1>
+          {headerSub && (
+            <span className="truncate text-sm text-neutral-500">{headerSub}</span>
+          )}
+        </div>
 
-        {/* On phones the controls take a clean full row of their own. The view
-            set differs per breakpoint (see VIEW_OPTIONS.showOn). */}
-        <div className="flex w-full flex-wrap items-center justify-between gap-1 sm:ml-auto sm:w-auto sm:justify-start sm:gap-1.5">
+        {/* On a phone New closes the title row, like on every other page; on
+            desktop it follows the navigation controls (hence the order). */}
+        <button
+          onClick={() =>
+            setModal({
+              mode: "create",
+              initial: createInitial("event", defaultNewStart(), true),
+            })
+          }
+          title="New entry (N)"
+          className="btn-primary shrink-0 px-3.5 sm:order-2 sm:py-1.5"
+        >
+          <Plus className="h-4 w-4" strokeWidth={2.5} />
+          New
+        </button>
+
+        {/* The view set differs per breakpoint (see VIEW_OPTIONS.showOn); on
+            phones the controls take a clean row of their own. */}
+        <div className="flex w-full items-center justify-between gap-1 sm:order-1 sm:ml-auto sm:w-auto sm:justify-start sm:gap-1.5">
           <div className="segmented">
             {VIEW_OPTIONS.map((option) => {
               const visibility =
@@ -1385,7 +1493,7 @@ export default function WeekCalendar({
                 <button
                   key={option.key}
                   onClick={() => setView(option.key)}
-                  data-active={view === option.key}
+                  aria-pressed={view === option.key}
                   className={visibility}
                 >
                   {option.label}
@@ -1397,48 +1505,39 @@ export default function WeekCalendar({
           <button
             onClick={goToday}
             title="Today (T)"
-            className="px-3 py-2 text-sm font-medium text-accent transition-opacity active:opacity-50 sm:py-1.5"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-accent-bright transition-opacity active:opacity-50 sm:py-1.5"
           >
             Today
           </button>
           {/* Arrows are for pointer devices; on phones you swipe the grid. */}
           <button
             onClick={goPrev}
-            className={`hidden sm:block ${headerButton}`}
+            className="icon-btn hidden sm:inline-flex"
             aria-label="Previous"
+            title="Previous (←)"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
           <button
             onClick={goNext}
-            className={`hidden sm:block ${headerButton}`}
+            className="icon-btn hidden sm:inline-flex"
             aria-label="Next"
+            title="Next (→)"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
-          <button
-            onClick={() =>
-              setModal({
-                mode: "create",
-                initial: createInitial("event", defaultNewStart(), true),
-              })
-            }
-            title="New entry (N)"
-            className="btn-primary px-3.5 py-2 sm:ml-1 sm:py-1.5"
-          >
-            <Plus className="h-5 w-5 sm:h-4 sm:w-4" />
-            <span className="hidden sm:inline">New</span>
-          </button>
-          {/* hidden on phones: dragging from the sidebar needs a mouse */}
-          <button
-            onClick={() => setSidebarOpen((v) => !v)}
-            className={`hidden sm:block ${headerButton} ${sidebarOpen ? "bg-neutral-900 text-neutral-100" : ""}`}
-            aria-label="Toggle task sidebar"
-            title="To plan (S)"
-          >
-            <PanelRight className="h-4 w-4" />
-          </button>
         </div>
+
+        {/* hidden on phones: dragging from the sidebar needs a mouse */}
+        <button
+          onClick={() => setSidebarOpen((v) => !v)}
+          className={`icon-btn hidden sm:order-3 sm:inline-flex ${sidebarOpen ? "bg-neutral-800 text-neutral-100" : ""}`}
+          aria-label="Toggle the To-plan sidebar"
+          aria-pressed={sidebarOpen}
+          title="To plan (S)"
+        >
+          <PanelRight className="h-4 w-4" />
+        </button>
       </div>
 
       <div className="relative flex min-h-0 flex-1">
@@ -1527,7 +1626,9 @@ export default function WeekCalendar({
             <div
               ref={scrollRef}
               onScroll={markScrolled}
-              className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
+              // pb-bar: the grid runs full-screen under the floating tab bar,
+              // and this lets its last hours scroll clear of it.
+              className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-bar"
             >
               <div className="flex">
                 <div
@@ -1560,6 +1661,8 @@ export default function WeekCalendar({
             className="min-w-0 flex-1 overflow-auto"
           >
             <div
+              // pb-bar only bites on a phone held sideways (zero on desktop)
+              className="pb-bar"
               style={{
                 minWidth: view === "day" ? 360 : view === "3day" ? 540 : 640,
               }}
@@ -1628,7 +1731,7 @@ export default function WeekCalendar({
         />
       )}
 
-      <Toast message={toast} />
+      <Toast message={toast} onDismiss={dismissToast} />
     </div>
   );
 }
