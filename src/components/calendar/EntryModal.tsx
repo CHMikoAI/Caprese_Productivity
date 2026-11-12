@@ -276,7 +276,7 @@ function DayStrip({
 }: {
   value: Date | null;
   onPick: (day: Date) => void;
-  /** With a label, "no date" is a choice (tasks, goals, a to-do's deadline). */
+  /** With a label, "no date" is a choice (tasks and goals). */
   noneLabel?: string;
   onNone?: () => void;
   calendarOpen: boolean;
@@ -421,10 +421,9 @@ export default function EntryModal({
   const [allDayEnd, setAllDayEnd] = useState(() =>
     startOfDay(addMinutes(initial.start, Math.max(initial.durationMin - 1, 0))),
   );
-  const [deadline, setDeadline] = useState<Date | null>(initial.deadline);
 
   /** Which date is being picked from the full month, if any. */
-  const [picker, setPicker] = useState<"start" | "end" | "deadline" | null>(null);
+  const [picker, setPicker] = useState<"start" | "end" | null>(null);
   const [notesOpen, setNotesOpen] = useState(
     () => initial.description.replace(/<[^>]*>/g, "").trim() !== "",
   );
@@ -432,6 +431,17 @@ export default function EntryModal({
   const [notesFocus, setNotesFocus] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A new entry starts in its title — under a mouse. On a phone that would
+  // bring the keyboard up while the sheet is still sliding in, and iOS then
+  // pans the page to wherever the field was at that moment: the sheet opens
+  // showing its lower half. There the sheet opens whole, and a tap on the
+  // title (right at the top) brings the keyboard.
+  const [focusTitle] = useState(
+    () =>
+      mode === "create" &&
+      typeof window !== "undefined" &&
+      !window.matchMedia("(pointer: coarse)").matches,
+  );
   const durationRow = useSelectedInView(durationMin);
   const titleRef = useRef<HTMLInputElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -484,7 +494,7 @@ export default function EntryModal({
     // that was only a goal for a moment.
     if (t === "goal") setAllDay(true);
     else if (type === "goal") setAllDay(initial.allDay);
-    // Todos never sit on the calendar — only an optional deadline.
+    // Todos never sit on the calendar.
     if (t === "todo") setStartDate(null);
   }
 
@@ -501,9 +511,12 @@ export default function EntryModal({
     let allDayOut = false;
 
     if (type === "todo") {
-      // Off-calendar reminder: no start, an optional date-only deadline.
+      // Off-calendar reminder: no start. A deadline can no longer be set
+      // here; one an older to-do still carries is kept as it is.
       allDayOut = true;
-      if (deadline) endAt = addDays(startOfDay(deadline), 1).toISOString();
+      if (initial.type === "todo" && initial.deadline) {
+        endAt = addDays(startOfDay(initial.deadline), 1).toISOString();
+      }
     } else if (startDate && allDay) {
       // Date-only entry: covers start day through the (inclusive) end day.
       startAt = startOfDay(startDate).toISOString();
@@ -624,8 +637,7 @@ export default function EntryModal({
             <div>
               <input
                 ref={titleRef}
-                // On a phone, editing should open the entry — not the keyboard.
-                autoFocus={mode === "create"}
+                autoFocus={focusTitle}
                 value={title}
                 onChange={(e) => {
                   setTitle(e.target.value);
@@ -662,38 +674,10 @@ export default function EntryModal({
             </div>
 
             {type === "todo" ? (
-              <section className="flex flex-col gap-2.5" aria-label="Deadline">
-                <p className="section-label">Deadline</p>
-                <DayStrip
-                  value={deadline}
-                  onPick={(day) => {
-                    setDeadline(startOfDay(day));
-                    setPicker(null);
-                  }}
-                  noneLabel="None"
-                  onNone={() => {
-                    setDeadline(null);
-                    setPicker(null);
-                  }}
-                  calendarOpen={picker === "deadline"}
-                  onToggleCalendar={() =>
-                    setPicker((p) => (p === "deadline" ? null : "deadline"))
-                  }
-                />
-                {picker === "deadline" && (
-                  <InlineCalendar
-                    value={deadline}
-                    onChange={(day) => {
-                      setDeadline(startOfDay(day));
-                      setPicker(null);
-                    }}
-                  />
-                )}
-                <p className="text-xs leading-relaxed text-neutral-500">
-                  A quick reminder, never on the calendar. Finish {TODO_BATCH} to
-                  earn a pick.
-                </p>
-              </section>
+              <p className="text-xs leading-relaxed text-neutral-500">
+                A quick reminder, never on the calendar. Finish {TODO_BATCH} to
+                earn a pick.
+              </p>
             ) : (
               <section className="flex flex-col gap-2.5" aria-label="When">
                 <p className="section-label">When</p>
