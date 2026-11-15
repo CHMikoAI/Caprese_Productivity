@@ -32,24 +32,24 @@ import { PICKS_FOR } from "@/lib/rewards";
 import type { Category, Entry, WeekReview } from "@/lib/types";
 import { REVIEW_OPENS_AFTER_DAYS, reviewWindow } from "@/lib/weekReview";
 
-const SECTIONS_STORAGE_KEY = "caprese_plan_sections";
+const SECTIONS_STORAGE_KEY = "caprese_plan_sections_v2";
 const NEUTRAL = "#6B7280"; // an entry without a project
 const MAX_DAY_DOTS = 4;
 
 type SectionKey = "backlog" | "tasks" | "events";
 
-/** Which of the fold-away sections are open. They start folded — the week's
- * to-dos are the point; the rest is there when it is wanted — and remember
- * how they were left. */
+/** Which of the fold-away sections are open. The week's tasks start open —
+ * they are half of what the week is measured by; the backlog and the events
+ * start folded — and each remembers how it was left. */
 function useOpenSections() {
   const [open, setOpen] = useState<Set<SectionKey>>(() => {
     try {
       const stored = localStorage.getItem(SECTIONS_STORAGE_KEY);
       if (stored) return new Set(JSON.parse(stored) as SectionKey[]);
     } catch {
-      /* storage unavailable or unreadable — start folded */
+      /* storage unavailable or unreadable — start from the default */
     }
-    return new Set();
+    return new Set<SectionKey>(["tasks"]);
   });
   useEffect(() => {
     try {
@@ -232,19 +232,19 @@ export default function WeekPlan({
   const project = (entry: Entry) =>
     entry.category_id ? categoryById.get(entry.category_id) : undefined;
 
-  const summary =
-    data.todoTotal === 0
-      ? "No to-dos planned yet"
-      : `${data.todoDone} of ${data.todoTotal} ${
-          data.todoTotal === 1 ? "to-do" : "to-dos"
-        } done`;
-  const sideNote = [
-    data.taskTotal > 0
-      ? `${data.taskDone}/${data.taskTotal} ${data.taskTotal === 1 ? "task" : "tasks"}`
-      : null,
+  const eventsNote =
     data.events.length > 0
       ? `${data.events.length} ${data.events.length === 1 ? "event" : "events"}`
+      : null;
+  /** The week in a sentence, for the review. */
+  const summary = [
+    data.todoTotal > 0
+      ? `${data.todoDone} of ${data.todoTotal} ${data.todoTotal === 1 ? "to-do" : "to-dos"}`
+      : "no to-dos",
+    data.taskTotal > 0
+      ? `${data.taskDone} of ${data.taskTotal} ${data.taskTotal === 1 ? "task" : "tasks"} done`
       : null,
+    eventsNote,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -312,10 +312,9 @@ export default function WeekPlan({
       >
         {/* ---- the week in one look ---- */}
         <div className="card overflow-hidden">
-          <div className="flex items-center gap-4 p-4">
-            <ProgressRing done={data.todoDone} total={data.todoTotal} />
-            <div className="min-w-0 flex-1">
-              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold text-neutral-50">
+          <div className="p-4">
+            <div className="flex items-center gap-2">
+              <p className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-base font-semibold text-neutral-50">
                 {relativeWeekLabel(weekStart, now)}
                 {review && (
                   <span
@@ -328,11 +327,19 @@ export default function WeekPlan({
                     {review.successful ? "Good week" : "Closed"}
                   </span>
                 )}
+                {eventsNote && (
+                  <span className="text-xs font-normal text-neutral-500">
+                    {eventsNote}
+                  </span>
+                )}
               </p>
-              <p className="text-sm text-neutral-400">{summary}</p>
-              {sideNote && <p className="text-xs text-neutral-500">{sideNote}</p>}
+              {variant === "page" && <span className="-my-2 -mr-2">{weekNav}</span>}
             </div>
-            {variant === "page" && weekNav}
+            {/* Two rings: what the week is measured by, side by side. */}
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <Progress label="To-dos" noun="to-dos" done={data.todoDone} total={data.todoTotal} />
+              <Progress label="Tasks" noun="tasks" done={data.taskDone} total={data.taskTotal} />
+            </div>
           </div>
 
           {variant === "page" && (
@@ -644,8 +651,7 @@ export default function WeekPlan({
                 How was KW {kw}?
               </p>
               <p className="mt-0.5 text-sm text-neutral-400">
-                {[summary, sideNote].filter(Boolean).join(" · ")}. Close the week
-                when you are done with it.
+                So far: {summary}. Close the week when you are done with it.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
@@ -688,9 +694,43 @@ export default function WeekPlan({
   );
 }
 
-/** To-dos done out of the week's total, as a ring. */
-function ProgressRing({ done, total }: { done: number; total: number }) {
-  const size = 64;
+/** One of the week's two measures: its ring, its name, what is still open. */
+function Progress({
+  label,
+  noun,
+  done,
+  total,
+}: {
+  label: string;
+  noun: string;
+  done: number;
+  total: number;
+}) {
+  const open = total - done;
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <ProgressRing done={done} total={total} noun={noun} />
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-neutral-100">{label}</p>
+        <p className="truncate text-xs text-neutral-500">
+          {total === 0 ? "None" : open === 0 ? "All done" : `${open} open`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** Done out of the week's total, as a ring. */
+function ProgressRing({
+  done,
+  total,
+  noun,
+}: {
+  done: number;
+  total: number;
+  noun: string;
+}) {
+  const size = 60;
   const stroke = 6;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
@@ -701,7 +741,7 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
       className="relative flex shrink-0 items-center justify-center"
       style={{ width: size, height: size }}
       role="img"
-      aria-label={total > 0 ? `${done} of ${total} to-dos done` : "No to-dos planned"}
+      aria-label={total > 0 ? `${done} of ${total} ${noun} done` : `No ${noun} planned`}
     >
       <svg width={size} height={size} className="-rotate-90">
         <circle
