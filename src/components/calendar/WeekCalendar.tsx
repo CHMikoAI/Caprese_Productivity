@@ -2,12 +2,14 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, PanelRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, ListChecks, Plus } from "lucide-react";
 import {
+  closeWeek,
   createEntry,
   deleteEntry,
+  reopenWeek,
   restoreEntry,
-  scheduleEntry,
+  setEntryStatus,
   updateEntry,
 } from "@/app/actions";
 import { TAB_RESELECT_EVENT } from "@/components/BottomNav";
@@ -27,7 +29,14 @@ import {
   toDateKey,
   WEEKDAYS_SHORT,
 } from "@/lib/dates";
-import type { Category, Entry, JournalEntry } from "@/lib/types";
+import type {
+  Category,
+  Entry,
+  EntryStatus,
+  JournalEntry,
+  WeekReview,
+} from "@/lib/types";
+import RewardToast, { useRewardToast } from "@/components/RewardToast";
 import Toast, { useToast } from "@/components/Toast";
 import EntryModal, {
   type EntryFormResult,
@@ -35,7 +44,7 @@ import EntryModal, {
 } from "./EntryModal";
 import JournalDayMarker from "./JournalDayMarker";
 import MonthView from "./MonthView";
-import TaskSidebar from "./TaskSidebar";
+import WeekPlan from "./WeekPlan";
 import EntryBlock, { type PositionedEntry } from "./EntryBlock";
 import { createInitial, editInitial } from "./entryModalInitial";
 import { blockPalette, goalFrame } from "@/lib/colorContrast";
@@ -46,13 +55,16 @@ const SLOT_PX = 22;
 const HOUR_PX = SLOT_PX * 2;
 const GRID_HEIGHT = 24 * HOUR_PX;
 const SCROLL_TO_HOUR = 7;
-const TASK_DROP_DURATION = 60;
 const VIEW_STORAGE_KEY = "caprese_view";
+const PLAN_STORAGE_KEY = "caprese_week_plan";
 
-type View = "day" | "3day" | "workweek" | "week" | "month";
+// "plan" is the week plan as a view of its own — phones only. On desktop the
+// plan is a panel beside whichever view is showing.
+type View = "day" | "3day" | "workweek" | "week" | "month" | "plan";
 
 // `showOn` drives which breakpoint a view button appears on. Phones get a
-// compact set (Day / 3 days / Month); desktop keeps the roomier week views.
+// compact set (Day / 3 days / Month / Plan); desktop keeps the roomier week
+// views.
 const VIEW_OPTIONS: {
   key: View;
   label: string;
@@ -63,6 +75,7 @@ const VIEW_OPTIONS: {
   { key: "workweek", label: "Workweek", showOn: "desktop" },
   { key: "week", label: "Week", showOn: "desktop" },
   { key: "month", label: "Month", showOn: "all" },
+  { key: "plan", label: "Plan", showOn: "mobile" },
 ];
 
 const MOBILE_MEDIA = "(max-width: 639px)"; // Tailwind's `sm` breakpoint
@@ -195,13 +208,17 @@ export default function WeekCalendar({
   initialEntries,
   categories,
   journalEntries,
+  initialReviews,
 }: {
   initialEntries: Entry[];
   categories: Category[];
   journalEntries: JournalEntry[];
+  /** The weeks that have been closed (see the week plan). */
+  initialReviews: WeekReview[];
 }) {
   const router = useRouter();
   const { message: toast, show: showToast, dismiss: dismissToast } = useToast();
+  const { reward, showReward } = useRewardToast();
 
   // The calendar only ever renders in the browser (see ClientOnly on the page),
   // so the layout and the last view used are known for the very first frame —
@@ -214,14 +231,19 @@ export default function WeekCalendar({
   );
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
   const [entries, setEntries] = useState(initialEntries);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [reviews, setReviews] = useState(initialReviews);
+  const [reviewBusy, setReviewBusy] = useState(false);
+  // The desktop week-plan panel: open until it is closed, and it stays the way
+  // it was left.
+  const [planOpen, setPlanOpen] = useState(() => {
+    try {
+      return localStorage.getItem(PLAN_STORAGE_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
   const [modal, setModal] = useState<ModalState | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [dragTask, setDragTask] = useState<Entry | null>(null);
-  const [dropPreview, setDropPreview] = useState<{
-    day: number;
-    startMin: number;
-  } | null>(null);
   const [createDrag, setCreateDrag] = useState<{
     day: number;
     startMin: number;
@@ -283,6 +305,19 @@ export default function WeekCalendar({
     setSyncedEntries(initialEntries);
     setEntries(initialEntries);
   }
+  const [syncedReviews, setSyncedReviews] = useState(initialReviews);
+  if (syncedReviews !== initialReviews) {
+    setSyncedReviews(initialReviews);
+    setReviews(initialReviews);
+  }
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PLAN_STORAGE_KEY, planOpen ? "1" : "0");
+    } catch {
+      /* storage unavailable — the panel just isn't remembered */
+    }
+  }, [planOpen]);
 
   useEffect(() => {
     if (!allowedViews(isMobile).includes(view)) return;
@@ -634,19 +669,6 @@ export default function WeekCalendar({
   // all-day band, timed ones in the day columns.
   const timedEntries = useMemo(
     () => entries.filter((e) => e.start_at && e.type !== "todo"),
-    [entries],
-  );
-
-  // Sidebar holds unscheduled, still-active tasks and goals ("To plan" in the
-  // planner) ready to be dropped onto the grid.
-  const openTasks = useMemo(
-    () =>
-      entries.filter(
-        (e) =>
-          (e.type === "task" || e.type === "goal") &&
-          e.status === "active" &&
-          !e.start_at,
-      ),
     [entries],
   );
 
@@ -1026,57 +1048,6 @@ export default function WeekCalendar({
     return addMinutes(startOfDay(base), 9 * 60);
   }
 
-  // ----- dropping tasks from the sidebar (HTML5 drag & drop) -----
-
-  function taskDropPosition(e: React.DragEvent) {
-    const rect = colsRef.current!.getBoundingClientRect();
-    const colWidth = rect.width / days.length;
-    const day = clamp(
-      Math.floor((e.clientX - rect.left) / colWidth),
-      0,
-      days.length - 1,
-    );
-    const startMin = clamp(
-      Math.floor((e.clientY - rect.top) / SLOT_PX) * 30,
-      0,
-      24 * 60 - TASK_DROP_DURATION,
-    );
-    return { day, startMin };
-  }
-
-  function onGridDragOver(e: React.DragEvent) {
-    if (!dragTask || !colsRef.current) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDropPreview(taskDropPosition(e));
-  }
-
-  function onGridDrop(e: React.DragEvent) {
-    if (!dragTask || !colsRef.current) return;
-    e.preventDefault();
-    const pos = taskDropPosition(e);
-    const task = dragTask;
-    setDragTask(null);
-    setDropPreview(null);
-
-    const start = addMinutes(days[pos.day], pos.startMin);
-    const end = addMinutes(start, TASK_DROP_DURATION);
-    const prev = entries;
-    setEntries((list) =>
-      list.map((ev) =>
-        ev.id === task.id
-          ? { ...ev, start_at: start.toISOString(), end_at: end.toISOString() }
-          : ev,
-      ),
-    );
-    scheduleEntry(task.id, start.toISOString(), end.toISOString())
-      .then(() => router.refresh())
-      .catch(() => {
-        setEntries(prev);
-        showToast("Could not schedule the task.");
-      });
-  }
-
   // ----- mutations -----
 
   function onModalSave(result: EntryFormResult) {
@@ -1095,6 +1066,7 @@ export default function WeekCalendar({
         all_day: result.allDay,
         description: result.description,
         status: "active",
+        plan_week: result.planWeek,
         created_at: new Date().toISOString(),
       };
       setEntries((list) => [...list, optimistic]);
@@ -1106,6 +1078,7 @@ export default function WeekCalendar({
         endAt: result.endAt,
         allDay: result.allDay,
         description: result.description,
+        planWeek: result.planWeek,
       })
         .then((created) => {
           setEntries((list) =>
@@ -1132,6 +1105,7 @@ export default function WeekCalendar({
                 end_at: result.endAt,
                 all_day: result.allDay,
                 description: result.description,
+                plan_week: result.planWeek,
               }
             : e,
         ),
@@ -1144,6 +1118,7 @@ export default function WeekCalendar({
         end_at: result.endAt,
         all_day: result.allDay,
         description: result.description,
+        plan_week: result.planWeek,
       })
         .then(() => router.refresh())
         .catch(() => {
@@ -1186,6 +1161,168 @@ export default function WeekCalendar({
     });
   }
 
+  // ----- week plan -----
+
+  /** The week the plan is about: the one in view (the anchor's, in a month). */
+  const planWeekStart = startOfWeek(view === "month" ? anchor : visibleDays[0]);
+  const planKey = toDateKey(planWeekStart);
+  const planReview = reviews.find((r) => r.week_start === planKey);
+
+  function patchEntry(id: string, patch: Partial<Entry>) {
+    setEntries((list) => list.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  }
+
+  /** Tick an entry off on the plan — or bring a resolved one back. */
+  function toggleEntry(entry: Entry) {
+    const next: EntryStatus =
+      entry.status !== "active"
+        ? "active"
+        : entry.type === "goal"
+          ? "achieved"
+          : "done";
+    const previous = entry.status;
+    patchEntry(entry.id, { status: next });
+    setEntryStatus(entry.id, next)
+      .then(({ picksAwarded }) => {
+        router.refresh();
+        if (picksAwarded > 0) showReward(picksAwarded);
+      })
+      .catch(() => {
+        patchEntry(entry.id, { status: previous });
+        showToast("Could not update the entry.");
+      });
+  }
+
+  /** Write a week (or none) onto to-dos; a failure puts back what it changed. */
+  function setTodoWeeks(changes: { id: string; week: string | null }[]) {
+    const next = new Map(changes.map((c) => [c.id, c.week]));
+    const before = new Map<string, string | null>();
+    for (const e of entries) {
+      if (next.has(e.id)) before.set(e.id, e.plan_week ?? null);
+    }
+    setEntries((list) =>
+      list.map((e) => (next.has(e.id) ? { ...e, plan_week: next.get(e.id) } : e)),
+    );
+    return Promise.all(
+      changes.map((c) => updateEntry(c.id, { plan_week: c.week })),
+    )
+      .then(() => router.refresh())
+      .catch(() => {
+        setEntries((list) =>
+          list.map((e) =>
+            before.has(e.id) ? { ...e, plan_week: before.get(e.id) } : e,
+          ),
+        );
+        showToast("Could not move the to-do.");
+      });
+  }
+
+  /** Move to-dos to a week from the plan — one tap, so it comes with an Undo. */
+  function moveTodos(todos: Entry[], week: string | null) {
+    if (todos.length === 0) return;
+    const back = todos.map((t) => ({ id: t.id, week: t.plan_week ?? null }));
+    const moved = setTodoWeeks(todos.map((t) => ({ id: t.id, week })));
+    const target = week ? `KW ${isoWeek(new Date(`${week}T00:00:00`))}` : "no week";
+    showToast(
+      todos.length === 1 ? `Moved to ${target}` : `${todos.length} moved to ${target}`,
+      {
+        label: "Undo",
+        // Wait for the move to land first, or the two would cross.
+        run: () => void moved.then(() => setTodoWeeks(back)),
+      },
+    );
+  }
+
+  /** The plan's quick add: a to-do for the week in view. */
+  async function addPlanTodo(title: string): Promise<boolean> {
+    try {
+      const created = await createEntry({
+        type: "todo",
+        title,
+        categoryId: null,
+        startAt: null,
+        endAt: null,
+        allDay: true,
+        description: null,
+        planWeek: planKey,
+      });
+      setEntries((list) => [...list, created]);
+      router.refresh();
+      return true;
+    } catch {
+      showToast("Could not add the to-do.");
+      return false;
+    }
+  }
+
+  function closePlanWeek(successful: boolean) {
+    setReviewBusy(true);
+    closeWeek(planKey, successful)
+      .then(({ review, picksAwarded }) => {
+        setReviews((list) => [
+          ...list.filter((r) => r.week_start !== review.week_start),
+          review,
+        ]);
+        if (picksAwarded > 0) showReward(picksAwarded, "A good week, closed");
+        else showToast("Week closed");
+        router.refresh();
+      })
+      .catch(() => showToast("Could not close the week."))
+      .finally(() => setReviewBusy(false));
+  }
+
+  function reopenPlanWeek() {
+    const week = planKey;
+    const previous = reviews;
+    setReviewBusy(true);
+    setReviews((list) => list.filter((r) => r.week_start !== week));
+    reopenWeek(week)
+      .then(() => router.refresh())
+      .catch(() => {
+        setReviews(previous);
+        showToast("Could not reopen the week.");
+      })
+      .finally(() => setReviewBusy(false));
+  }
+
+  const weekPlan = (variant: "panel" | "page") => (
+    <WeekPlan
+      variant={variant}
+      weekStart={planWeekStart}
+      now={now}
+      entries={entries}
+      categoryById={categoryById}
+      review={planReview}
+      reviewBusy={reviewBusy}
+      onPrevWeek={() => setAnchor((a) => addDays(a, -7))}
+      onNextWeek={() => setAnchor((a) => addDays(a, 7))}
+      onClosePanel={variant === "panel" ? () => setPlanOpen(false) : undefined}
+      onOpenEntry={(entry) =>
+        setModal({ mode: "edit", entryId: entry.id, initial: editInitial(entry) })
+      }
+      onOpenDay={(day) => {
+        setAnchor(startOfDay(day));
+        setView("day");
+      }}
+      onToggle={toggleEntry}
+      onMoveTodos={moveTodos}
+      onAddTodo={addPlanTodo}
+      onCloseWeek={closePlanWeek}
+      onReopenWeek={reopenPlanWeek}
+    />
+  );
+
+  /** "New": an event at a sensible time — on the plan, a to-do for its week. */
+  function openNew() {
+    setModal({
+      mode: "create",
+      initial:
+        view === "plan"
+          ? createInitial("todo", defaultNewStart(), false, 60, planKey)
+          : createInitial("event", defaultNewStart(), true),
+    });
+  }
+
   // ----- navigation -----
 
   const stepDays = view === "day" ? 1 : view === "3day" ? 3 : 7;
@@ -1208,16 +1345,12 @@ export default function WeekCalendar({
 
   // Google-Calendar-style keys; inactive while typing or in a dialog.
   useShortcuts({
-    n: () =>
-      setModal({
-        mode: "create",
-        initial: createInitial("event", defaultNewStart(), true),
-      }),
+    n: openNew,
     t: goToday,
     d: () => setView("day"),
     w: () => setView(isMobile ? "3day" : "week"),
     m: () => setView("month"),
-    s: () => setSidebarOpen((v) => !v),
+    p: () => (isMobile ? setView("plan") : setPlanOpen((v) => !v)),
     ArrowLeft: goPrev,
     ArrowRight: goNext,
   });
@@ -1367,13 +1500,6 @@ export default function WeekCalendar({
           label={drag.title}
         />
       )}
-      {dragTask && dropPreview && dropPreview.day === di && (
-        <GhostBlock
-          startMin={dropPreview.startMin}
-          durationMin={TASK_DROP_DURATION}
-          label={dragTask.title}
-        />
-      )}
       {createDrag && createDrag.day === di && (
         <GhostBlock
           startMin={createDrag.startMin}
@@ -1415,7 +1541,6 @@ export default function WeekCalendar({
       entries={timedEntries}
       categoryById={categoryById}
       journalByDate={journalByDate}
-      dragTask={dragTask}
       // Drill into a day: same gesture on phone and desktop. Creating an entry
       // from the month grid now goes through that day view (or the New button),
       // which keeps a tap unambiguous — especially next to the swipe pager.
@@ -1426,27 +1551,6 @@ export default function WeekCalendar({
       onSelectEntry={(entry) =>
         setModal({ mode: "edit", entryId: entry.id, initial: editInitial(entry) })
       }
-      onDropTaskOnDay={(day) => {
-        const task = dragTask;
-        setDragTask(null);
-        if (!task) return;
-        const start = addMinutes(startOfDay(day), 9 * 60);
-        const end = addMinutes(start, TASK_DROP_DURATION);
-        const prev = entries;
-        setEntries((list) =>
-          list.map((ev) =>
-            ev.id === task.id
-              ? { ...ev, start_at: start.toISOString(), end_at: end.toISOString() }
-              : ev,
-          ),
-        );
-        scheduleEntry(task.id, start.toISOString(), end.toISOString())
-          .then(() => router.refresh())
-          .catch(() => {
-            setEntries(prev);
-            showToast("Could not schedule the task.");
-          });
-      }}
     />
   );
 
@@ -1465,12 +1569,7 @@ export default function WeekCalendar({
         {/* On a phone New closes the title row, like on every other page; on
             desktop it follows the navigation controls (hence the order). */}
         <button
-          onClick={() =>
-            setModal({
-              mode: "create",
-              initial: createInitial("event", defaultNewStart(), true),
-            })
-          }
+          onClick={openNew}
           title="New entry (N)"
           className="btn-primary shrink-0 px-3.5 sm:order-2 sm:py-1.5"
         >
@@ -1528,21 +1627,28 @@ export default function WeekCalendar({
           </button>
         </div>
 
-        {/* hidden on phones, either way up: dragging from the sidebar needs a
-            mouse */}
+        {/* The plan's panel is a desktop thing; phones have it as a view. */}
         <button
-          onClick={() => setSidebarOpen((v) => !v)}
-          className={`icon-btn hidden sm:order-3 desk:inline-flex ${sidebarOpen ? "bg-neutral-800 text-neutral-100" : ""}`}
-          aria-label="Toggle the To-plan sidebar"
-          aria-pressed={sidebarOpen}
-          title="To plan (S)"
+          onClick={() => setPlanOpen((v) => !v)}
+          className={`hidden shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors sm:order-3 desk:inline-flex ${
+            planOpen
+              ? "bg-neutral-800 text-neutral-50"
+              : "text-neutral-300 hover:bg-neutral-800 hover:text-neutral-50"
+          }`}
+          aria-pressed={planOpen}
+          title="Week plan (P)"
         >
-          <PanelRight className="h-4 w-4" />
+          <ListChecks className="h-4 w-4" />
+          Week plan
         </button>
       </div>
 
       <div className="relative flex min-h-0 flex-1">
-        {view === "month" ? (
+        {view === "plan" ? (
+          <div key="plan" className="flex min-h-0 flex-1 flex-col">
+            {weekPlan("page")}
+          </div>
+        ) : view === "month" ? (
           monthPaging ? (
             // ---- phone month pager: a prev/current/next strip driven by the
             // same axis-locked swipe as the day views ----
@@ -1702,12 +1808,7 @@ export default function WeekCalendar({
                   {hourGutter}
                 </div>
 
-                <div
-                  ref={colsRef}
-                  className="relative flex flex-1"
-                  onDragOver={onGridDragOver}
-                  onDrop={onGridDrop}
-                >
+                <div ref={colsRef} className="relative flex flex-1">
                   {slotLines}
                   {days.map(dayBodyColumn)}
                 </div>
@@ -1716,17 +1817,13 @@ export default function WeekCalendar({
           </div>
         )}
 
-        <TaskSidebar
-          open={sidebarOpen}
-          tasks={openTasks}
-          categoryById={categoryById}
-          onDragStartTask={setDragTask}
-          onDragEndTask={() => {
-            setDragTask(null);
-            setDropPreview(null);
-          }}
-          onClose={() => setSidebarOpen(false)}
-        />
+        {/* Beside the grid on a wide screen, over its right edge on a narrow
+            one. Never on a phone — the plan is a view there. */}
+        {planOpen && !isMobile && view !== "plan" && (
+          <aside className="absolute inset-y-0 right-0 z-30 hidden w-[23rem] max-w-full flex-col border-l border-neutral-800 bg-neutral-950 shadow-2xl desk:flex lg:static lg:shadow-none">
+            {weekPlan("panel")}
+          </aside>
+        )}
       </div>
 
       {modal && (
@@ -1741,6 +1838,7 @@ export default function WeekCalendar({
       )}
 
       <Toast message={toast} onDismiss={dismissToast} />
+      <RewardToast reward={reward} />
     </div>
   );
 }

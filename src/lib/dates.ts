@@ -148,3 +148,24 @@ export function durationLabel(minutes: number): string {
   if (rest === 30) return `${hours}.5 h`;
   return `${hours} h ${rest} min`;
 }
+
+/** The key of the week containing `date`: its Monday as yyyy-mm-dd. */
+export function weekKey(date: Date): string {
+  return toDateKey(startOfWeek(date));
+}
+
+/** "This week", "Next week", "Last week", "In 3 weeks", "3 weeks ago". */
+export function relativeWeekLabel(weekStart: Date, now: Date = new Date()): string {
+  const diff = Math.round(
+    (startOfWeek(weekStart).getTime() - startOfWeek(now).getTime()) / (7 * DAY_MS),
+  );
+  if (diff === 0) return "This week";
+  if (diff === 1) return "Next week";
+  if (diff === -1) return "Last week";
+  return diff > 0 ? `In ${diff} weeks` : `${-diff} weeks ago`;
+}
+
+/** e.g. "16 Nov". */
+export function formatDayMonth(date: Date): string {
+  return `${date.getDate()} ${MONTHS_SHORT[date.getMonth()]}`;
+}

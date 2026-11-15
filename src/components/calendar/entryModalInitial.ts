@@ -31,6 +31,7 @@ export function editInitial(entry: Entry): EntryModalInitial {
       isTodo && entry.end_at
         ? startOfDay(new Date(new Date(entry.end_at).getTime() - 1))
         : null,
+    planWeek: isTodo ? (entry.plan_week ?? null) : null,
     description: entry.description ?? "",
   };
 }
@@ -40,6 +41,7 @@ export function createInitial(
   start: Date,
   scheduled: boolean,
   durationMin = 60,
+  planWeek: string | null = null,
 ): EntryModalInitial {
   return {
     type,
@@ -50,6 +52,7 @@ export function createInitial(
     durationMin,
     allDay: type === "goal", // goals are date-only by default
     deadline: null,
+    planWeek,
     description: "",
   };
 }

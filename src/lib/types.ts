@@ -30,7 +30,20 @@ export type Entry = {
   all_day: boolean; // date-only entry (no time-of-day)
   description: string | null; // sanitized HTML
   status: EntryStatus;
+  // A to-do's calendar week (that week's Monday, yyyy-mm-dd) — optional. With
+  // one, the to-do is on that week's plan in the calendar.
+  plan_week?: string | null;
   created_at: string;
+};
+
+/**
+ * A closed week: at the end of a week it is reviewed and closed as a good one
+ * (which pays picks) or not. No row = the week is still open.
+ */
+export type WeekReview = {
+  week_start: string; // yyyy-mm-dd, always a Monday
+  successful: boolean;
+  closed_at: string;
 };
 
 export const ENTRY_TYPE_LABEL: Record<EntryType, string> = {

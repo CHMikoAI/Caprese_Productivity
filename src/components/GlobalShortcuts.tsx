@@ -30,7 +30,7 @@ const SECTIONS: { title: string; items: [string, string][] }[] = [
       ["T", "Today"],
       ["D / W / M", "Day · Week · Month view"],
       ["← / →", "Previous / next period"],
-      ["S", "Toggle the To-plan sidebar"],
+      ["P", "Week plan"],
     ],
   },
   {

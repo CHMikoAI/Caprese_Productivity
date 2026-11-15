@@ -35,6 +35,7 @@ export const PICKS_FOR = {
   journalStreak: 2,
   todoBatch: 1,
   partnerWeek: 1,
+  weekReview: 3,
 } as const;
 
 /**
