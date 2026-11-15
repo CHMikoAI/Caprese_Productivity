@@ -1645,7 +1645,7 @@ export default function WeekCalendar({
 
       <div className="relative flex min-h-0 flex-1">
         {view === "plan" ? (
-          <div key="plan" className="flex min-h-0 flex-1 flex-col">
+          <div key="plan" className="flex min-h-0 min-w-0 flex-1 flex-col">
             {weekPlan("page")}
           </div>
         ) : view === "month" ? (
