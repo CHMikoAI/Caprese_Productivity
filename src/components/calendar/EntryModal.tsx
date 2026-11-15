@@ -17,9 +17,13 @@ import {
   addMinutes,
   durationLabel,
   formatDayLong,
+  formatDayMonth,
+  fromDateKey,
+  isoWeek,
   isSameDay,
   minutesSinceMidnight,
   startOfDay,
+  startOfWeek,
   toDateKey,
   WEEKDAYS_SHORT,
   withMinutes,
@@ -42,6 +46,8 @@ export type EntryFormResult = {
   endAt: string | null;
   allDay: boolean;
   description: string | null;
+  /** To-dos only: the calendar week it is planned for (its Monday), if any. */
+  planWeek: string | null;
 };
 
 export type EntryModalInitial = {
@@ -53,6 +59,7 @@ export type EntryModalInitial = {
   durationMin: number;
   allDay: boolean;
   deadline: Date | null; // todo only
+  planWeek: string | null; // todo only: the week it is planned for (its Monday)
   description: string;
 };
 
@@ -60,6 +67,8 @@ export type EntryModalInitial = {
 const DURATIONS = [30, 60, 90, 120, 240];
 /** Days offered in the strip, from today on. */
 const STRIP_DAYS = 14;
+/** Weeks offered in the to-do's week row, from this one on. */
+const STRIP_WEEKS = 8;
 /** Last half-hour slot of a day. */
 const LAST_SLOT = 23 * 60 + 30;
 
@@ -359,6 +368,77 @@ function DayStrip({
   );
 }
 
+/**
+ * The coming weeks as a row — a to-do can be planned for one of them, or for
+ * none. A week that is not on the row (an older one) gets its own chip.
+ */
+function WeekStrip({
+  value,
+  onPick,
+}: {
+  value: string | null;
+  onPick: (week: string | null) => void;
+}) {
+  const current = startOfWeek(new Date());
+  const weeks = Array.from({ length: STRIP_WEEKS }, (_, i) => addDays(current, i * 7));
+  const keys = weeks.map(toDateKey);
+  const extra = value && !keys.includes(value) ? fromDateKey(value) : null;
+  const scroller = useSelectedInView(value ?? "none");
+
+  function chip(week: Date, top: string) {
+    const key = toDateKey(week);
+    const selected = key === value;
+    return (
+      <button
+        key={key}
+        type="button"
+        onClick={() => onPick(key)}
+        aria-pressed={selected}
+        aria-label={`KW ${isoWeek(week)}, from ${dayLabel(week)}`}
+        className={`flex h-[3.75rem] shrink-0 flex-col items-center justify-center rounded-2xl px-3.5 transition-colors ${
+          selected ? "bg-accent text-white" : "bg-neutral-800 text-neutral-100"
+        }`}
+      >
+        <span
+          className={`whitespace-nowrap text-[0.6875rem] font-medium leading-4 ${
+            selected ? "text-white/85" : "text-neutral-500"
+          }`}
+        >
+          {top}
+        </span>
+        <span className="whitespace-nowrap text-base font-semibold leading-6 tabular-nums">
+          KW {isoWeek(week)}
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <div
+      ref={scroller}
+      className="chip-scroller relative -mx-5 px-5 sm:-mx-6 sm:px-6"
+      role="group"
+      aria-label="Week"
+    >
+      <button
+        type="button"
+        onClick={() => onPick(null)}
+        aria-pressed={value === null}
+        className={`flex h-[3.75rem] shrink-0 items-center rounded-2xl px-4 text-sm font-medium transition-colors ${
+          value === null ? "bg-accent text-white" : "bg-neutral-800 text-neutral-300"
+        }`}
+      >
+        No week
+      </button>
+      {extra && extra.getTime() < current.getTime() && chip(extra, formatDayMonth(extra))}
+      {weeks.map((week, i) =>
+        chip(week, i === 0 ? "This week" : i === 1 ? "Next week" : formatDayMonth(week)),
+      )}
+      {extra && extra.getTime() > current.getTime() && chip(extra, formatDayMonth(extra))}
+    </div>
+  );
+}
+
 /** The full month, opened in place under the control that asked for it. */
 function InlineCalendar({
   value,
@@ -421,6 +501,7 @@ export default function EntryModal({
   const [allDayEnd, setAllDayEnd] = useState(() =>
     startOfDay(addMinutes(initial.start, Math.max(initial.durationMin - 1, 0))),
   );
+  const [planWeek, setPlanWeek] = useState<string | null>(initial.planWeek);
 
   /** Which date is being picked from the full month, if any. */
   const [picker, setPicker] = useState<"start" | "end" | null>(null);
@@ -543,6 +624,7 @@ export default function EntryModal({
       endAt,
       allDay: allDayOut,
       description: description.replace(/<[^>]*>/g, "").trim() ? description : null,
+      planWeek: type === "todo" ? planWeek : null,
     });
   }
 
@@ -674,10 +756,16 @@ export default function EntryModal({
             </div>
 
             {type === "todo" ? (
-              <p className="text-xs leading-relaxed text-neutral-500">
-                A quick reminder, never on the calendar. Finish {TODO_BATCH} to
-                earn a pick.
-              </p>
+              <section className="flex flex-col gap-2.5" aria-label="Week">
+                <p className="section-label">Week</p>
+                <WeekStrip value={planWeek} onPick={setPlanWeek} />
+                <p className="text-xs leading-relaxed text-neutral-500">
+                  {planWeek
+                    ? "It shows on that week’s plan in the calendar."
+                    : "A quick reminder for whenever — pick a week to put it on that week’s plan."}{" "}
+                  Finish {TODO_BATCH} to earn a pick.
+                </p>
+              </section>
             ) : (
               <section className="flex flex-col gap-2.5" aria-label="When">
                 <p className="section-label">When</p>

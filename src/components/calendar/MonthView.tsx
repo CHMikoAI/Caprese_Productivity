@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   addDays,
   formatTime,
@@ -23,24 +23,18 @@ export default function MonthView({
   entries,
   categoryById,
   journalByDate,
-  dragTask,
   onOpenDay,
   onSelectEntry,
-  onDropTaskOnDay,
 }: {
   anchor: Date;
   now: Date;
   entries: Entry[];
   categoryById: Map<string, Category>;
   journalByDate: Map<string, JournalEntry>;
-  dragTask: Entry | null;
   /** Tapping a day drills into it — the day view, anchored on that date. */
   onOpenDay: (day: Date) => void;
   onSelectEntry: (entry: Entry) => void;
-  onDropTaskOnDay: (day: Date) => void;
 }) {
-  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
-
   const cells = useMemo(() => {
     const start = startOfWeek(startOfMonth(anchor));
     return Array.from({ length: 42 }, (_, i) => addDays(start, i));
@@ -101,7 +95,6 @@ export default function MonthView({
           const inMonth = day.getMonth() === month;
           const isToday = isSameDay(day, now);
           const dayEntries = entriesByDay.get(key) ?? [];
-          const isDropTarget = dragTask && dragOverKey === key;
 
           return (
             <div
@@ -124,22 +117,9 @@ export default function MonthView({
                   : ""
               }`}
               title="Open this day"
-              onDragOver={(e) => {
-                if (!dragTask) return;
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                setDragOverKey(key);
-              }}
-              onDragLeave={() => setDragOverKey((k) => (k === key ? null : k))}
-              onDrop={(e) => {
-                if (!dragTask) return;
-                e.preventDefault();
-                setDragOverKey(null);
-                onDropTaskOnDay(day);
-              }}
               className={`flex min-h-0 min-w-0 cursor-pointer flex-col gap-1 border-b border-r border-neutral-800/50 p-1.5 transition-colors hover:bg-neutral-900/40 ${
                 inMonth ? "" : "bg-neutral-950/60"
-              } ${isDropTarget ? "bg-accent/10 ring-1 ring-inset ring-accent/50" : ""}`}
+              }`}
             >
               <div className="flex items-center justify-end gap-1">
                 <JournalDayMarker entry={journalByDate.get(key)} />

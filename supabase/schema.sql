@@ -18,9 +18,11 @@ create table if not exists categories (
 --                      upcoming (dated, future) -> open (time passed / undated)
 --                      -> terminal `status`: done/cancelled (task),
 --                      achieved/missed (goal).
---  * todo           -> short reminder, never on the calendar (start_at stays
---                      null); an optional deadline lives in end_at. Resolves
---                      done/cancelled like a task; every 3 done pays 1 pick.
+--  * todo           -> short reminder, never on the calendar grid (start_at
+--                      stays null). It may be planned for a calendar week
+--                      (plan_week = that week's Monday) and then shows on that
+--                      week's plan. Resolves done/cancelled like a task; every
+--                      3 done pays 1 pick. (end_at once held a deadline.)
 -- all_day marks date-only entries (no time); goals default to it.
 create table if not exists entries (
   id uuid primary key default gen_random_uuid(),
@@ -38,7 +40,21 @@ create table if not exists entries (
     check (type <> 'event' or (start_at is not null and end_at is not null))
 );
 
+-- `add column if not exists` for databases created before the week plan.
+alter table entries add column if not exists plan_week date;
+
 create index if not exists entries_type_idx on entries (type);
+create index if not exists entries_plan_week_idx on entries (plan_week)
+  where plan_week is not null;
+
+-- Week plan: a week is reviewed at its end and closed as a good one or not
+-- (week_start is that week's Monday). No row = still open. A good week pays
+-- picks once ('week_review' in reward_grants, keyed by the week).
+create table if not exists week_reviews (
+  week_start date primary key,
+  successful boolean not null,
+  closed_at timestamptz not null default now()
+);
 create index if not exists entries_start_at_idx on entries (start_at);
 create index if not exists entries_status_idx on entries (status);
 
@@ -142,7 +158,8 @@ create table if not exists salads (
 create table if not exists reward_grants (
   id uuid primary key default gen_random_uuid(),
   source text not null check (source in ('journal', 'task', 'goal', 'journal_streak',
-                                        'todo_streak', 'partner_goal', 'partner_week')),
+                                        'todo_streak', 'partner_goal', 'partner_week',
+                                        'week_review')),
   source_key text not null,
   picks int not null check (picks > 0),
   created_at timestamptz not null default now(),
@@ -154,7 +171,7 @@ create table if not exists reward_grants (
 alter table reward_grants drop constraint if exists reward_grants_source_check;
 alter table reward_grants add constraint reward_grants_source_check
   check (source in ('journal', 'task', 'goal', 'journal_streak', 'todo_streak',
-                    'partner_goal', 'partner_week'));
+                    'partner_goal', 'partner_week', 'week_review'));
 
 -- One row per drawn card; salad_id is set when the ingredient is spent.
 create table if not exists card_draws (
@@ -265,6 +282,7 @@ alter table journal_entries enable row level security;
 alter table thoughts enable row level security;
 alter table partner_goals enable row level security;
 alter table partner_weeks enable row level security;
+alter table week_reviews enable row level security;
 alter table salads enable row level security;
 alter table reward_grants enable row level security;
 alter table card_draws enable row level security;

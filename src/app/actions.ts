@@ -13,6 +13,7 @@ import {
   type Salad,
 } from "@/lib/rewards";
 import { PARTNER_NOTE_MIN, PARTNER_OUTCOMES } from "@/lib/types";
+import { REVIEW_OPENS_AFTER_DAYS, REVIEW_OPEN_WEEKS_BACK } from "@/lib/weekReview";
 import type {
   Category,
   Entry,
@@ -24,6 +25,7 @@ import type {
   Pillar,
   Thought,
   ThoughtSource,
+  WeekReview,
 } from "@/lib/types";
 
 function db() {
@@ -51,7 +53,8 @@ type GrantRow = {
     | "journal_streak"
     | "todo_streak"
     | "partner_goal"
-    | "partner_week";
+    | "partner_week"
+    | "week_review";
   source_key: string;
   picks: number;
 };
@@ -122,9 +125,27 @@ export type EntryInput = {
   endAt: string | null;
   allDay: boolean;
   description: string | null;
+  /** To-dos only: the calendar week it is planned for (that week's Monday). */
+  planWeek?: string | null;
 };
 
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A week is named by its Monday (yyyy-mm-dd). */
+function mondayKey(value: string): string {
+  if (!DATE_KEY.test(value) || new Date(`${value}T00:00:00Z`).getUTCDay() !== 1) {
+    throw new Error("Invalid week.");
+  }
+  return value;
+}
+
+/** Only a to-do carries a week; anything else has its own date. */
+function planWeekOf(type: EntryType, week: string | null | undefined) {
+  return type === "todo" && week ? mondayKey(week) : null;
+}
+
 export async function createEntry(input: EntryInput): Promise<Entry> {
+  const planWeek = planWeekOf(input.type, input.planWeek);
   const { data, error } = await db()
     .from("entries")
     .insert({
@@ -135,6 +156,7 @@ export async function createEntry(input: EntryInput): Promise<Entry> {
       end_at: input.endAt,
       all_day: input.allDay,
       description: input.description ? sanitizeHtml(input.description) : null,
+      ...(planWeek ? { plan_week: planWeek } : {}),
     })
     .select()
     .single();
@@ -154,9 +176,11 @@ export async function updateEntry(
     all_day: boolean;
     description: string | null;
     status: EntryStatus;
+    plan_week: string | null;
   }>,
 ): Promise<void> {
   const clean = { ...patch };
+  if (clean.plan_week) clean.plan_week = mondayKey(clean.plan_week);
   if (typeof clean.description === "string") {
     clean.description = sanitizeHtml(clean.description);
   }
@@ -236,23 +260,10 @@ export async function restoreEntry(entry: Entry): Promise<void> {
         description: entry.description ? sanitizeHtml(entry.description) : null,
         status: entry.status,
         created_at: entry.created_at,
+        ...(entry.plan_week ? { plan_week: mondayKey(entry.plan_week) } : {}),
       },
       { onConflict: "id" },
     );
-  if (error) throw new Error(error.message);
-  refreshPlanning();
-}
-
-/** Drop an unscheduled task/goal onto the calendar: give it a time. */
-export async function scheduleEntry(
-  id: string,
-  startAt: string,
-  endAt: string,
-): Promise<void> {
-  const { error } = await db()
-    .from("entries")
-    .update({ start_at: startAt, end_at: endAt, all_day: false })
-    .eq("id", id);
   if (error) throw new Error(error.message);
   refreshPlanning();
 }
@@ -274,6 +285,59 @@ export async function postponeEntry(
     .eq("id", id);
   if (error) throw new Error(error.message);
   refreshPlanning();
+}
+
+// ---------- week plan ----------
+
+/**
+ * Close a week after its review: a good one, or not. A good week pays picks —
+ * once: the week is the ledger key, so reopening and closing it again never
+ * pays twice. A week can be closed from its Friday until the end of the week
+ * after (the page applies that rule in local time; here it is checked with a
+ * day of slack either way, since the server does not know the time zone).
+ */
+export async function closeWeek(
+  weekStart: string,
+  successful: boolean,
+): Promise<{ review: WeekReview; picksAwarded: number }> {
+  const week = mondayKey(weekStart);
+  const DAY = 86_400_000;
+  const start = new Date(`${week}T00:00:00Z`).getTime();
+  const now = Date.now();
+  if (now < start + (REVIEW_OPENS_AFTER_DAYS - 1) * DAY) {
+    throw new Error("This week cannot be reviewed yet.");
+  }
+  if (now > start + (7 * (REVIEW_OPEN_WEEKS_BACK + 1) + 1) * DAY) {
+    throw new Error("This week can no longer be reviewed.");
+  }
+
+  const { data, error } = await db()
+    .from("week_reviews")
+    .upsert(
+      { week_start: week, successful, closed_at: new Date().toISOString() },
+      { onConflict: "week_start" },
+    )
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  revalidatePath("/calendar");
+
+  const picksAwarded = successful
+    ? await grantPicks([
+        { source: "week_review", source_key: week, picks: PICKS_FOR.weekReview },
+      ])
+    : 0;
+  return { review: data, picksAwarded };
+}
+
+/** Reopen a closed week. Picks it has paid stay paid. */
+export async function reopenWeek(weekStart: string): Promise<void> {
+  const { error } = await db()
+    .from("week_reviews")
+    .delete()
+    .eq("week_start", mondayKey(weekStart));
+  if (error) throw new Error(error.message);
+  revalidatePath("/calendar");
 }
 
 // ---------- journal ----------
@@ -329,8 +393,6 @@ export async function deleteJournalEntry(id: string): Promise<void> {
 }
 
 // ---------- partner (weekly goals) ----------
-
-const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * The Partner track is archived (lib/features.ts): its record is read-only.

@@ -42,7 +42,14 @@ import ProjectsModal from "@/components/tasks/ProjectsModal";
 import RewardToast, { useRewardToast } from "@/components/RewardToast";
 import Section from "@/components/Section";
 import Toast, { useToast } from "@/components/Toast";
-import { formatDMY, formatTime, nextHalfHour } from "@/lib/dates";
+import {
+  formatDMY,
+  formatTime,
+  fromDateKey,
+  isoWeek,
+  nextHalfHour,
+  weekKey,
+} from "@/lib/dates";
 import { ENTRY_TYPE_ICON } from "@/lib/entryIcons";
 import { isResolved, phaseOf, STATUS_LABEL } from "@/lib/entryStatus";
 import { scrollAppToTop } from "@/lib/scroll";
@@ -203,8 +210,8 @@ export default function PlannerView({
   // ----- grouping -----
   // review:   dated task/goal whose time has passed — decide done/plan/cancel
   // upcoming: dated task/goal in the future (+ future events when toggled on)
-  // toPlan:   task/goal without a date — drag them onto the calendar or plan here
-  // todos:    reminders (never on the calendar), sorted by deadline
+  // toPlan:   task/goal without a date — plan them here
+  // todos:    reminders (never on the calendar grid), planned weeks first
   // archive:  resolved (done/cancelled/achieved/missed)
   const groups = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -247,10 +254,11 @@ export default function PlannerView({
     review.sort(byStart);
     upcoming.sort(byStart);
     toPlan.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-    // Todos: soonest deadline first, undated last, then newest.
+    // Todos: the ones planned for a week first (soonest week on top), the
+    // rest after them, newest first.
     todos.sort((a, b) => {
-      const ka = a.end_at ?? "￿";
-      const kb = b.end_at ?? "￿";
+      const ka = a.plan_week ?? "￿";
+      const kb = b.plan_week ?? "￿";
       if (ka !== kb) return ka < kb ? -1 : 1;
       return a.created_at < b.created_at ? 1 : -1;
     });
@@ -417,6 +425,7 @@ export default function PlannerView({
         all_day: result.allDay,
         description: result.description,
         status: "active",
+        plan_week: result.planWeek,
         created_at: new Date().toISOString(),
       };
       setEntries((list) => [optimistic, ...list]);
@@ -428,6 +437,7 @@ export default function PlannerView({
         endAt: result.endAt,
         allDay: result.allDay,
         description: result.description,
+        planWeek: result.planWeek,
       })
         .then((created) => {
           setEntries((list) => list.map((e) => (e.id === tempId ? created : e)));
@@ -447,6 +457,7 @@ export default function PlannerView({
         end_at: result.endAt,
         all_day: result.allDay,
         description: result.description,
+        plan_week: result.planWeek,
       };
       patchLocal(entry.id, patch);
       updateEntry(entry.id, patch)
@@ -460,6 +471,7 @@ export default function PlannerView({
             end_at: entry.end_at,
             all_day: entry.all_day,
             description: entry.description,
+            plan_week: entry.plan_week ?? null,
           });
           showToast("Could not save the entry.");
         });
@@ -670,7 +682,7 @@ export default function PlannerView({
     <Section
       title="To plan"
       count={groups.toPlan.length}
-      hint="No date yet. Plan them here or drag them onto the calendar."
+      hint="No date yet — plan them here."
       collapsed={collapsed.has("toPlan")}
       onToggle={() => toggleSection("toPlan")}
     >
@@ -737,8 +749,11 @@ export default function PlannerView({
         ) : (
           groups.todos.map((entry) => {
             const dl = todoDeadline(entry);
+            // Late: past its deadline, or planned for a week that is over.
             return activeRow(entry, {
-              overdue: dl != null && dl.getTime() <= now.getTime(),
+              overdue:
+                (dl != null && dl.getTime() <= now.getTime()) ||
+                (entry.plan_week != null && entry.plan_week < weekKey(now)),
             });
           })
         )}
@@ -1076,6 +1091,8 @@ function EntryRow({
   actions: React.ReactNode;
 }) {
   const deadline = entry.type === "todo" ? todoDeadline(entry) : null;
+  const planWeek =
+    entry.type === "todo" && entry.plan_week ? fromDateKey(entry.plan_week) : null;
   return (
     <li className="card flex items-center py-1 pl-1 pr-1.5">
       {leading}
@@ -1090,6 +1107,7 @@ function EntryRow({
         {(struck ||
           project ||
           deadline ||
+          planWeek ||
           (entry.type !== "todo" && entry.start_at)) && (
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-neutral-500">
             {/* archived rows say how they ended: done, cancelled, achieved… */}
@@ -1099,6 +1117,11 @@ function EntryRow({
               </span>
             )}
             {project && <span className="min-w-0 truncate">{project.name}</span>}
+            {planWeek && (
+              <span className={overdue && !struck ? "text-accent-bright" : ""}>
+                KW {isoWeek(planWeek)}
+              </span>
+            )}
             {deadline && (
               <span className={overdue ? "text-accent-bright" : ""}>
                 {overdue ? "was due " : "due "}
