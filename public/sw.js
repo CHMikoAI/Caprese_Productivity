@@ -5,9 +5,10 @@
 // installable and to show a friendly page instead of the browser's error
 // screen when the network is gone.
 
-const CACHE = "caprese-shell-v2";
+const CACHE = "caprese-shell-v3";
 const OFFLINE_URL = "/offline";
-const SHELL = [OFFLINE_URL, "/icons/icon-192.png", "/icons/apple-touch-icon.png"];
+// The offline page shows the logo, so it is kept alongside.
+const SHELL = [OFFLINE_URL, "/icons/logo.png", "/icons/app-192.png", "/icons/app-180.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
