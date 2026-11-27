@@ -47,6 +47,7 @@ import MonthView from "./MonthView";
 import WeekPlan from "./WeekPlan";
 import EntryBlock, { type PositionedEntry } from "./EntryBlock";
 import { createInitial, editInitial } from "./entryModalInitial";
+import { useSwipePager } from "./useSwipePager";
 import { blockPalette, goalFrame } from "@/lib/colorContrast";
 import { isFinished } from "@/lib/entryStatus";
 import { useShortcuts } from "@/lib/useShortcuts";
@@ -111,24 +112,18 @@ function restoreView(mobile: boolean): View {
 }
 
 // Phone paging. The vertical (time) axis is its own scroll container; the
-// horizontal (day) axis is a transform-based pager driven by touch. A gesture
-// locks to a single axis on its first move, so a swipe is *either* vertical or
-// horizontal — never a diagonal mixture — and a sideways swipe never disturbs
-// the vertical position. The grid renders one page either side of the visible
-// one so a swipe slides into already-rendered days; on settle the anchor moves
-// and the pager silently recentres before paint.
+// horizontal (day) axis is a transform-based pager driven by touch (see
+// useSwipePager). The grid renders one page either side of the visible one so
+// a swipe slides into already-rendered days; once a page has settled the
+// anchor moves and the pager silently recentres before paint.
 const GUTTER_PX = 56; // the w-14 time gutter
 const PAGES_EACH_SIDE = 1;
-const AXIS_LOCK_PX = 8; // finger travel before a swipe commits to one axis
 // A touch on the grid only counts as "tap to create" when the finger barely
 // moved, the grid didn't scroll under it, and the whole thing was over
 // quickly. Without these, every vertical scroll ended in the new-entry dialog.
 const TAP_SLOP_PX = 10; // finger travel a tap may drift
 const TAP_MAX_MS = 500; // longer than this is a press, not a tap
 const SCROLL_QUIET_MS = 350; // a tap this soon after scrolling is a fling stop
-const SWIPE_MS = 260;
-const SWIPE_EASE = "cubic-bezier(0.22, 0.61, 0.36, 1)";
-const SWIPE_TRANSITION = `transform ${SWIPE_MS}ms ${SWIPE_EASE}`;
 
 type ModalState = {
   mode: "create" | "edit";
@@ -261,13 +256,10 @@ export default function WeekCalendar({
   const headerStripRef = useRef<HTMLDivElement | null>(null);
   const allDayStripRef = useRef<HTMLDivElement | null>(null);
   const bodyStripRef = useRef<HTMLDivElement | null>(null);
-  const animatingRef = useRef(false);
-  // Month pager (phones): a strip of prev/current/next months translated by the
-  // same axis-locked swipe. `suppressClickRef` swallows the day-cell click that
-  // would otherwise fire at the end of a swipe.
+  // Month pager (phones): a strip of prev/current/next months paged by the
+  // same swipe.
   const monthRootRef = useRef<HTMLDivElement | null>(null);
   const monthStripRef = useRef<HTMLDivElement | null>(null);
-  const suppressClickRef = useRef(false);
   const dragRef = useRef<{
     entry: Entry;
     mode: "move" | "resize-top" | "resize-bottom";
@@ -278,6 +270,7 @@ export default function WeekCalendar({
     origEndMin: number;
     startClientX: number;
     startClientY: number;
+    startedAt: number;
     moved: boolean;
   } | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
@@ -435,130 +428,28 @@ export default function WeekCalendar({
   const columnPercent = `${100 / days.length}%`;
   const restingOffset = `translate3d(-${100 / PAGES}%, 0, 0)`;
 
-  // ----- phone pager: transform + axis-locked swipe -----
+  // ----- phone pager -----
 
-  const setStripTransform = (x: number) => {
-    const t = `translate3d(${x}px, 0, 0)`;
-    for (const el of [
-      headerStripRef.current,
-      allDayStripRef.current,
-      bodyStripRef.current,
-    ]) {
-      if (el) el.style.transform = t;
-    }
-  };
-
-  const setStripTransition = (value: string) => {
-    for (const el of [
-      headerStripRef.current,
-      allDayStripRef.current,
-      bodyStripRef.current,
-    ]) {
-      if (el) el.style.transition = value;
-    }
-  };
-
-  // Recentre the pager on the middle page whenever the anchor (a settled swipe)
-  // or the page width changes. Runs before paint so the recentre is invisible.
-  useLayoutEffect(() => {
-    if (!paging || !pageWidth) return;
-    setStripTransition("none");
-    setStripTransform(-pageWidth);
-  }, [anchor, pageWidth, paging, view]);
-
-  /** Animate to the previous/next page, then commit the anchor. */
-  function animateToPage(delta: -1 | 1): boolean {
-    if (!paging || !pageWidth) return false;
-    if (animatingRef.current) return true;
-    animatingRef.current = true;
-    setStripTransition(SWIPE_TRANSITION);
-    setStripTransform(-pageWidth - delta * pageWidth);
-    window.setTimeout(() => {
-      setStripTransition("none");
-      animatingRef.current = false;
-      setAnchor((a) => addDays(a, delta * daysPerPage));
-    }, SWIPE_MS + 20);
-    return true;
+  /** A sideways swipe (or a touch that catches a settling page) is not a tap,
+   * a press or a drag on what lies under the finger — forget those. */
+  function cancelTouchIntents() {
+    dragRef.current = null;
+    dragStateRef.current = null;
+    createDragRef.current = null;
+    createDragStateRef.current = null;
+    setDrag(null);
+    setCreateDrag(null);
   }
 
-  // The swipe gesture. `touch-action: pan-y` lets the browser own vertical
-  // scrolling while it hands us the horizontal component; we pick the axis on
-  // the first meaningful move and, once horizontal, drive the transform and
-  // preventDefault so the vertical axis stays put.
-  useEffect(() => {
-    if (!paging || !pageWidth) return;
-    const root = mobileRootRef.current;
-    if (!root) return;
-    let startX = 0;
-    let startY = 0;
-    let axis: "x" | "y" | null = null;
-
-    const onStart = (e: TouchEvent) => {
-      if (animatingRef.current || e.touches.length !== 1) {
-        axis = "y"; // ignore multi-touch / in-flight animations
-        return;
-      }
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      axis = null;
-      setStripTransition("none");
-    };
-
-    const onMove = (e: TouchEvent) => {
-      if (axis === "y" || e.touches.length !== 1) return;
-      const dx = e.touches[0].clientX - startX;
-      const dy = e.touches[0].clientY - startY;
-      if (axis === null) {
-        if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
-        axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-        if (axis === "x") {
-          // A horizontal swipe pages the grid, so abort any pending tap / create
-          // / entry interaction — its trailing pointerup then does nothing.
-          dragRef.current = null;
-          dragStateRef.current = null;
-          createDragRef.current = null;
-          createDragStateRef.current = null;
-          setDrag(null);
-          setCreateDrag(null);
-        }
-      }
-      if (axis === "x") {
-        e.preventDefault();
-        setStripTransform(-pageWidth + dx);
-      }
-    };
-
-    const onEnd = (e: TouchEvent) => {
-      if (axis !== "x") {
-        axis = null;
-        return;
-      }
-      axis = null;
-      const dx = (e.changedTouches[0]?.clientX ?? startX) - startX;
-      const commit = Math.max(pageWidth * 0.18, 44);
-      const delta = dx <= -commit ? 1 : dx >= commit ? -1 : 0;
-      animatingRef.current = true;
-      setStripTransition(SWIPE_TRANSITION);
-      setStripTransform(-pageWidth - delta * pageWidth);
-      window.setTimeout(() => {
-        setStripTransition("none");
-        animatingRef.current = false;
-        if (delta !== 0) setAnchor((a) => addDays(a, delta * daysPerPage));
-        else setStripTransform(-pageWidth);
-      }, SWIPE_MS + 20);
-    };
-
-    root.addEventListener("touchstart", onStart, { passive: true });
-    root.addEventListener("touchmove", onMove, { passive: false });
-    root.addEventListener("touchend", onEnd, { passive: true });
-    root.addEventListener("touchcancel", onEnd, { passive: true });
-    return () => {
-      root.removeEventListener("touchstart", onStart);
-      root.removeEventListener("touchmove", onMove);
-      root.removeEventListener("touchend", onEnd);
-      root.removeEventListener("touchcancel", onEnd);
-    };
-  }, [paging, pageWidth, daysPerPage]);
+  const dayPager = useSwipePager({
+    enabled: paging,
+    rootRef: mobileRootRef,
+    pageWidth,
+    strips: [headerStripRef, allDayStripRef, bodyStripRef],
+    onPage: (delta) => setAnchor((a) => addDays(a, delta * daysPerPage)),
+    resetKey: `${view}|${toDateKey(anchor)}`,
+    onGestureStart: cancelTouchIntents,
+  });
 
   // ----- month pager (phones): swipe left/right to change month -----
 
@@ -575,84 +466,14 @@ export default function WeekCalendar({
     return () => ro.disconnect();
   }, [view, isMobile]);
 
-  // Recentre the month strip on the middle (current) month before paint.
-  useLayoutEffect(() => {
-    if (!monthPaging || !monthW) return;
-    const el = monthStripRef.current;
-    if (el) {
-      el.style.transition = "none";
-      el.style.transform = `translate3d(${-monthW}px, 0, 0)`;
-    }
-  }, [anchor, monthW, monthPaging]);
-
-  useEffect(() => {
-    if (!monthPaging || !monthW) return;
-    const root = monthRootRef.current;
-    const strip = monthStripRef.current;
-    if (!root || !strip) return;
-    let startX = 0;
-    let startY = 0;
-    let axis: "x" | "y" | null = null;
-
-    const onStart = (e: TouchEvent) => {
-      if (animatingRef.current || e.touches.length !== 1) {
-        axis = "y";
-        return;
-      }
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      axis = null;
-      strip.style.transition = "none";
-    };
-    const onMove = (e: TouchEvent) => {
-      if (axis === "y" || e.touches.length !== 1) return;
-      const dx = e.touches[0].clientX - startX;
-      const dy = e.touches[0].clientY - startY;
-      if (axis === null) {
-        if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) return;
-        axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-      }
-      if (axis === "x") {
-        e.preventDefault();
-        strip.style.transform = `translate3d(${-monthW + dx}px, 0, 0)`;
-      }
-    };
-    const onEnd = (e: TouchEvent) => {
-      if (axis !== "x") {
-        axis = null;
-        return;
-      }
-      axis = null;
-      const dx = (e.changedTouches[0]?.clientX ?? startX) - startX;
-      // A real horizontal swipe must not also fire the tapped day cell's click.
-      if (Math.abs(dx) > AXIS_LOCK_PX) {
-        suppressClickRef.current = true;
-        window.setTimeout(() => (suppressClickRef.current = false), 400);
-      }
-      const commit = Math.max(monthW * 0.18, 44);
-      const delta = dx <= -commit ? 1 : dx >= commit ? -1 : 0;
-      animatingRef.current = true;
-      strip.style.transition = SWIPE_TRANSITION;
-      strip.style.transform = `translate3d(${-monthW - delta * monthW}px, 0, 0)`;
-      window.setTimeout(() => {
-        strip.style.transition = "none";
-        animatingRef.current = false;
-        if (delta !== 0) setAnchor((a) => addMonths(a, delta));
-        else strip.style.transform = `translate3d(${-monthW}px, 0, 0)`;
-      }, SWIPE_MS + 20);
-    };
-
-    root.addEventListener("touchstart", onStart, { passive: true });
-    root.addEventListener("touchmove", onMove, { passive: false });
-    root.addEventListener("touchend", onEnd, { passive: true });
-    root.addEventListener("touchcancel", onEnd, { passive: true });
-    return () => {
-      root.removeEventListener("touchstart", onStart);
-      root.removeEventListener("touchmove", onMove);
-      root.removeEventListener("touchend", onEnd);
-      root.removeEventListener("touchcancel", onEnd);
-    };
-  }, [monthPaging, monthW]);
+  const monthPager = useSwipePager({
+    enabled: monthPaging,
+    rootRef: monthRootRef,
+    pageWidth: monthW,
+    strips: [monthStripRef],
+    onPage: (delta) => setAnchor((a) => addMonths(a, delta)),
+    resetKey: toDateKey(anchor),
+  });
 
   const categoryById = useMemo(
     () => new Map(categories.map((c) => [c.id, c])),
@@ -757,6 +578,7 @@ export default function WeekCalendar({
       origEndMin: item.endMin,
       startClientX: e.clientX,
       startClientY: e.clientY,
+      startedAt: e.timeStamp,
       moved: false,
     };
   }
@@ -781,6 +603,7 @@ export default function WeekCalendar({
       origEndMin: item.endMin,
       startClientX: e.clientX,
       startClientY: e.clientY,
+      startedAt: e.timeStamp,
       moved: false,
     };
   }
@@ -847,11 +670,13 @@ export default function WeekCalendar({
     setDrag(next);
   }
 
-  function onEntryPointerUp() {
+  function onEntryPointerUp(e: React.PointerEvent<HTMLDivElement>) {
     // Suppress the trailing pointerup of a horizontal page swipe.
     const d = dragRef.current;
     dragRef.current = null;
     if (!d) return;
+    // The touch that stopped a settling page: not a tap on the block.
+    if (e.pointerType === "touch" && dayPager.isPagingTouch(d.startedAt)) return;
     if (!d.moved) {
       // A plain click on the body opens the editor; a click on a resize grip
       // (no drag) does nothing.
@@ -989,6 +814,8 @@ export default function WeekCalendar({
     if (!d) return;
     if (!d.moved || !sel) {
       if (e.pointerType === "touch" && !isTap(d, e.timeStamp)) return;
+      // The touch that stopped a settling page: not a tap on the slot.
+      if (e.pointerType === "touch" && dayPager.isPagingTouch(d.startedAt)) return;
       openCreateAt(days[dayIndex], slotIndex * 30);
       return;
     }
@@ -1328,13 +1155,13 @@ export default function WeekCalendar({
   const stepDays = view === "day" ? 1 : view === "3day" ? 3 : 7;
 
   function goPrev() {
-    if (animateToPage(-1)) return;
+    if (dayPager.go(-1) || monthPager.go(-1)) return;
     setAnchor((a) =>
       view === "month" ? addMonths(a, -1) : addDays(a, -stepDays),
     );
   }
   function goNext() {
-    if (animateToPage(1)) return;
+    if (dayPager.go(1) || monthPager.go(1)) return;
     setAnchor((a) =>
       view === "month" ? addMonths(a, 1) : addDays(a, stepDays),
     );
@@ -1374,11 +1201,13 @@ export default function WeekCalendar({
 
   // ----- shared grid pieces (used by both the desktop grid and the phone pager) -----
 
-  const dayHeaderCell = (day: Date, i: number) => {
+  // Keyed by date, so turning a page moves the columns that stay in view
+  // instead of re-filling every column with another day.
+  const dayHeaderCell = (day: Date) => {
     const isToday = isSameDay(day, now);
     return (
       <div
-        key={i}
+        key={toDateKey(day)}
         style={dayColStyle}
         className={`flex items-center justify-center gap-1.5 border-l border-neutral-800/40 py-2.5 text-sm ${dayColClass}`}
       >
@@ -1408,13 +1237,14 @@ export default function WeekCalendar({
     return (
       <div
         key={bar.entry.id}
-        onClick={() =>
+        onClick={() => {
+          if (dayPager.isPagingTouch()) return;
           setModal({
             mode: "edit",
             entryId: bar.entry.id,
             initial: editInitial(bar.entry),
-          })
-        }
+          });
+        }}
         className={`absolute flex cursor-pointer items-center overflow-hidden rounded-md border px-2 text-[11px] leading-none transition-[filter] hover:brightness-110 ${past ? "opacity-60" : ""}`}
         style={{
           top: bar.row * (ALLDAY_BAR_H + ALLDAY_BAR_GAP) + ALLDAY_BAR_GAP,
@@ -1456,7 +1286,7 @@ export default function WeekCalendar({
 
   const dayBodyColumn = (day: Date, di: number) => (
     <div
-      key={di}
+      key={toDateKey(day)}
       className={`relative border-l border-neutral-800/40 ${dayColClass}`}
       style={{ height: GRID_HEIGHT, ...dayColStyle }}
     >
@@ -1663,8 +1493,9 @@ export default function WeekCalendar({
               className="relative min-h-0 flex-1 overflow-hidden"
               style={{ touchAction: "pan-y" }}
               onClickCapture={(e) => {
-                // swallow the click a settled swipe would otherwise land on a cell
-                if (suppressClickRef.current) {
+                // swallow the click a swipe (or a caught page) would otherwise
+                // land on a cell
+                if (monthPager.isPagingTouch()) {
                   e.stopPropagation();
                   e.preventDefault();
                 }
@@ -1707,7 +1538,7 @@ export default function WeekCalendar({
                     className="flex will-change-transform"
                     style={{
                       width: stripWidth || stripPercent,
-                      transform: dayWidth ? undefined : restingOffset,
+                      transform: restingOffset,
                     }}
                   >
                     {days.map(dayHeaderCell)}
@@ -1727,7 +1558,7 @@ export default function WeekCalendar({
                       style={{
                         height: allDayHeight,
                         width: stripWidth || stripPercent,
-                        transform: dayWidth ? undefined : restingOffset,
+                        transform: restingOffset,
                       }}
                     >
                       {allDayBarEls}
@@ -1743,6 +1574,10 @@ export default function WeekCalendar({
               // pb-bar: the grid runs full-screen under the floating tab bar,
               // and this lets its last hours scroll clear of it.
               className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-bar"
+              // The browser only ever scrolls this vertically; sideways is the
+              // pager's. (touch-action stops at a scroller, so the pager root's
+              // own pan-y does not reach in here.)
+              style={{ touchAction: "pan-y" }}
             >
               <div className="flex">
                 <div
@@ -1758,7 +1593,7 @@ export default function WeekCalendar({
                     style={{
                       width: stripWidth || stripPercent,
                       height: GRID_HEIGHT,
-                      transform: dayWidth ? undefined : restingOffset,
+                      transform: restingOffset,
                     }}
                   >
                     {slotLines}
