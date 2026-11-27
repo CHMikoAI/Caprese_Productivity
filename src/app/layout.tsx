@@ -8,16 +8,16 @@ export const metadata: Metadata = {
   applicationName: "Caprese",
   manifest: "/manifest.webmanifest",
   icons: {
-    // The browser-tab favicon. Declaring `apple` alone suppresses Next's
-    // automatic link for app/icon.svg, so Chrome would get no tab icon —
-    // spell the icon out. SVG first (crisp at any size), PNG as a fallback.
+    // The browser-tab favicon: the tomato on a transparent ground, so it sits
+    // on light and dark tab bars alike. The .ico carries the small sizes, the
+    // PNG the sharp one for high-density screens.
     icon: [
-      { url: "/icon.svg", type: "image/svg+xml" },
-      { url: "/icons/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icons/favicon-192.png", type: "image/png", sizes: "192x192" },
     ],
-    shortcut: [{ url: "/icon.svg", type: "image/svg+xml" }],
-    // iOS uses this one for the home screen (it ignores SVG icons there).
-    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }],
+    shortcut: [{ url: "/favicon.ico" }],
+    // iOS uses this one for the home screen: opaque, on the app's dark ground.
+    apple: [{ url: "/icons/app-180.png", sizes: "180x180" }],
   },
   appleWebApp: {
     capable: true,

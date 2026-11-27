@@ -24,6 +24,6 @@ export const config = {
   // service worker outside of any session, so gating them would break
   // "Add to Home Screen" and the offline fallback. None of them expose data.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icon.svg|icons/|manifest.webmanifest|sw.js|offline).*)",
+    "/((?!_next/static|_next/image|favicon.ico|icons/|manifest.webmanifest|sw.js|offline).*)",
   ],
 };
